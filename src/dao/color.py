@@ -18,7 +18,7 @@ class ColorDAO:
         finally:
             conn.close()
 
-    def obtener_activos(self) -> list[Color]:
+    def obtener_todos(self) -> list[Color]:
         """R (Read): Filtra colores activos."""
         conn = self.db.obtener_conexion()
         cursor = conn.cursor()
@@ -26,6 +26,17 @@ class ColorDAO:
         filas = cursor.fetchall()
         conn.close()
         return [Color(**dict(fila)) for fila in filas]
+    
+
+    def obtener_por_id(self, id_color: int) -> Color | None:
+        """Read: filtra un color por id"""
+        conn = self.db.obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM colores WHERE estado = 1 AND id_color = ?", (id_color,))
+        fila = cursor.fetchone()
+        conn.close()
+        return Color(**dict(fila)) if fila else None
+    
 
     def actualizar(self, id_color: int, color: ColorBase) -> bool:
         conn = self.db.obtener_conexion()

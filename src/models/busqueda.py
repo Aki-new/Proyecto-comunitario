@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional
 
-class PacienteBusqueda(BaseModel):
+class TarjetaSalida(BaseModel):
     cedula: str
     nombre1: str
     nombre2: Optional[str] = None

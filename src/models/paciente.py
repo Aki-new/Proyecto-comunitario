@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 class PacienteBase(BaseModel):
-    cedula: str = Field(..., min_length=6, max_length=15)
+    cedula: str = Field(..., min_length=1, max_length=15)
     nombre1: str
     nombre2: Optional[str] = None
     apellido1: str
