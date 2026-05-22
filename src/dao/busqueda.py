@@ -4,71 +4,66 @@ from dao.conexion import ConexionDB
 
 
 class BusquedaDAO:
-    """DAO para consultas de búsqueda sobre la vista 'vista_paciente_tarjeta'."""
+    """DAO para consultas de busqueda sobre la vista 'vista_paciente_tarjeta'."""
 
     def __init__(self):
         self.db = ConexionDB()
 
-    def obtener_todos(self) -> list[TarjetaSalida]:
-        """Consulta la vista que une pacientes, tarjetas y colores.
-        Retorna una lista de objetos TarjetaSalida con la información combinada.
-        """
+    def _ejecutar_consulta(self, query: str, params: tuple = ()) -> list[TarjetaSalida]:
+        """Metodo auxiliar para ejecutar consultas y mapear resultados."""
         conn = self.db.obtener_conexion()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM vista_paciente_tarjeta")
+        cursor.execute(query, params)
         filas = cursor.fetchall()
         conn.close()
         return [TarjetaSalida(**dict(fila)) for fila in filas]
+
+    def obtener_todos(self) -> list[TarjetaSalida]:
+        """Retorna todos los registros de la vista."""
+        return self._ejecutar_consulta("SELECT * FROM vista_paciente_tarjeta")
 
     def buscar_por_cedula(self, cedula: str) -> list[TarjetaSalida]:
-        """Busca pacientes en la vista filtrados por cédula (búsqueda parcial)."""
-        conn = self.db.obtener_conexion()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(
+        """Busqueda parcial por cedula."""
+        return self._ejecutar_consulta(
             "SELECT * FROM vista_paciente_tarjeta WHERE cedula LIKE ?",
-            (f"%{cedula}%",)
+            (f"%{cedula}%",),
         )
-        filas = cursor.fetchall()
-        conn.close()
-        return [TarjetaSalida(**dict(fila)) for fila in filas]
 
     def buscar_por_nombre(self, nombre: str) -> list[TarjetaSalida]:
-        """Busca pacientes en la vista filtrados por primer nombre (búsqueda parcial)."""
-        conn = self.db.obtener_conexion()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM vista_paciente_tarjeta WHERE nombre1 LIKE ?",
-            (f"%{nombre}%",)
+        """Busqueda parcial por nombre completo (nombre1 o nombre2)."""
+        return self._ejecutar_consulta(
+            "SELECT * FROM vista_paciente_tarjeta WHERE nombre1 LIKE ? OR nombre2 LIKE ?",
+            (f"%{nombre}%", f"%{nombre}%"),
         )
-        filas = cursor.fetchall()
-        conn.close()
-        return [TarjetaSalida(**dict(fila)) for fila in filas]
 
     def buscar_por_apellido(self, apellido: str) -> list[TarjetaSalida]:
-        """Busca pacientes en la vista filtrados por primer apellido (búsqueda parcial)."""
-        conn = self.db.obtener_conexion()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM vista_paciente_tarjeta WHERE apellido1 LIKE ?",
-            (f"%{apellido}%",)
+        """Busqueda parcial por apellido (apellido1 o apellido2)."""
+        return self._ejecutar_consulta(
+            "SELECT * FROM vista_paciente_tarjeta WHERE apellido1 LIKE ? OR apellido2 LIKE ?",
+            (f"%{apellido}%", f"%{apellido}%"),
         )
-        filas = cursor.fetchall()
-        conn.close()
-        return [TarjetaSalida(**dict(fila)) for fila in filas]
 
-    def buscar_por_num_historia(self, num_historia: str) -> list[TarjetaSalida]:
-        """Busca pacientes en la vista filtrados por número de historia."""
-        conn = self.db.obtener_conexion()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM vista_paciente_tarjeta WHERE num_historia LIKE ?",
-            (f"%{num_historia}%",)
+    def buscar_por_nombre_completo(self, texto: str) -> list[TarjetaSalida]:
+        """Busqueda en todos los campos de nombre y apellido."""
+        patron = f"%{texto}%"
+        return self._ejecutar_consulta(
+            "SELECT * FROM vista_paciente_tarjeta "
+            "WHERE nombre1 LIKE ? OR nombre2 LIKE ? "
+            "OR apellido1 LIKE ? OR apellido2 LIKE ?",
+            (patron, patron, patron, patron),
         )
-        filas = cursor.fetchall()
-        conn.close()
-        return [TarjetaSalida(**dict(fila)) for fila in filas]
+
+    def buscar_por_fecha_nacimiento(self, fecha: str) -> list[TarjetaSalida]:
+        """Busqueda por fecha de nacimiento (parcial o exacta)."""
+        return self._ejecutar_consulta(
+            "SELECT * FROM vista_paciente_tarjeta WHERE fecha_nacimiento LIKE ?",
+            (f"%{fecha}%",),
+        )
+
+    def buscar_por_lugar_nacimiento(self, lugar: str) -> list[TarjetaSalida]:
+        """Busqueda parcial por lugar de nacimiento."""
+        return self._ejecutar_consulta(
+            "SELECT * FROM vista_paciente_tarjeta WHERE lugar_nacimiento LIKE ?",
+            (f"%{lugar}%",),
+        )

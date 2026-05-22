@@ -1,5 +1,8 @@
 import customtkinter as ctk
 from models.usuario import Usuario
+from views.pacientes_view import PacientesView
+from views.colores_view import ColoresView
+from views.usuarios_view import UsuariosView
 
 
 class DashboardView(ctk.CTkToplevel):
@@ -28,8 +31,6 @@ class DashboardView(ctk.CTkToplevel):
     MENU_ITEMS = [
         {"texto": "📊  Inicio",          "clave": "inicio"},
         {"texto": "👤  Pacientes",        "clave": "pacientes"},
-        {"texto": "🗂️  Tarjetas",         "clave": "tarjetas"},
-        {"texto": "🔍  Búsqueda",         "clave": "busqueda"},
         {"texto": "🎨  Colores",          "clave": "colores"},
         {"texto": "👥  Usuarios",         "clave": "usuarios"},
     ]
@@ -271,9 +272,7 @@ class DashboardView(ctk.CTkToplevel):
         titulos = {
             "inicio": "Inicio",
             "pacientes": "Gestión de Pacientes",
-            "tarjetas": "Tarjetas de Salud",
-            "busqueda": "Búsqueda de Registros",
-            "colores": "Gestión de Colores",
+            "colores": "Referencia de Colores",
             "usuarios": "Gestión de Usuarios",
         }
         self.label_titulo_pagina.configure(text=titulos.get(clave, clave))
@@ -281,9 +280,17 @@ class DashboardView(ctk.CTkToplevel):
         # Cargar la página correspondiente
         paginas = {
             "inicio": self._mostrar_pagina_inicio,
+            "pacientes": lambda: self._cargar_modulo_vista(PacientesView),
+            "colores": lambda: self._cargar_modulo_vista(ColoresView),
+            "usuarios": lambda: self._cargar_modulo_vista(UsuariosView),
         }
         pagina_fn = paginas.get(clave, self._mostrar_pagina_placeholder)
         pagina_fn()
+
+    def _cargar_modulo_vista(self, vista_class):
+        """Instancia un módulo de vista y lo coloca en el área de contenido."""
+        modulo = vista_class(self.contenedor_pagina)
+        modulo.pack(fill="both", expand=True)
 
     def _actualizar_estilo_menu(self, clave_activa: str):
         """Resalta el botón del menú activo y resetea los demás."""
@@ -340,10 +347,9 @@ class DashboardView(ctk.CTkToplevel):
         cards_frame.pack(fill="x", pady=(0, 20))
 
         cards_data = [
-            {"titulo": "Pacientes",  "icono": "👤", "desc": "Registro y gestión"},
-            {"titulo": "Tarjetas",   "icono": "🗂️", "desc": "Historias clínicas"},
-            {"titulo": "Búsqueda",   "icono": "🔍", "desc": "Consultar registros"},
-            {"titulo": "Colores",    "icono": "🎨", "desc": "Clasificación"},
+            {"titulo": "Pacientes",  "icono": "👤", "desc": "Busqueda, registro y gestion"},
+            {"titulo": "Colores",    "icono": "🎨", "desc": "Referencia de clasificacion"},
+            {"titulo": "Usuarios",   "icono": "👥", "desc": "Administracion de accesos"},
         ]
 
         for i, card_data in enumerate(cards_data):

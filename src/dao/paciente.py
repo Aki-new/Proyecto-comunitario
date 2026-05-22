@@ -12,6 +12,7 @@ class PacienteDAO:
     def crear(self, paciente: PacienteCreate) -> int:
         """Inserta un nuevo paciente en la base de datos.
         Retorna el id del paciente creado, o -1 si la cédula ya existe.
+        Pacientes con cedula 'S/C' se almacenan con NULL (permite multiples).
         """
         conn = self.db.obtener_conexion()
         conn.row_factory = sqlite3.Row
@@ -22,9 +23,12 @@ class PacienteDAO:
                  lugar_nacimiento, fecha_nacimiento, estado_vital, estado)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
         """
+        # S/C -> NULL para que UNIQUE no bloquee multiples sin cedula
+        cedula_db = None if paciente.cedula in ("S/C", "", None) else paciente.cedula
+
         try:
             cursor.execute(query, (
-                paciente.cedula,
+                cedula_db,
                 paciente.nombre1,
                 paciente.nombre2,
                 paciente.apellido1,
@@ -40,6 +44,13 @@ class PacienteDAO:
         finally:
             conn.close()
 
+    def _fila_a_paciente(self, fila) -> Paciente:
+        """Convierte una fila de BD a Paciente, manejando NULL en cedula."""
+        d = dict(fila)
+        if d.get("cedula") is None:
+            d["cedula"] = "S/C"
+        return Paciente(**d)
+
     def obtener_por_id(self, id_paciente: int) -> Paciente | None:
         """Obtiene un paciente activo por su ID desde la tabla 'pacientes'."""
         conn = self.db.obtener_conexion()
@@ -51,7 +62,7 @@ class PacienteDAO:
         )
         fila = cursor.fetchone()
         conn.close()
-        return Paciente(**dict(fila)) if fila else None
+        return self._fila_a_paciente(fila) if fila else None
 
     def obtener_por_cedula(self, cedula: str) -> Paciente | None:
         """Obtiene un paciente activo por su número de cédula."""
@@ -64,7 +75,7 @@ class PacienteDAO:
         )
         fila = cursor.fetchone()
         conn.close()
-        return Paciente(**dict(fila)) if fila else None
+        return self._fila_a_paciente(fila) if fila else None
 
     def obtener_todos(self) -> list[Paciente]:
         """Obtiene todos los pacientes activos."""
@@ -74,7 +85,7 @@ class PacienteDAO:
         cursor.execute("SELECT * FROM pacientes WHERE estado = 1")
         filas = cursor.fetchall()
         conn.close()
-        return [Paciente(**dict(fila)) for fila in filas]
+        return [self._fila_a_paciente(fila) for fila in filas]
 
     def actualizar(self, id_paciente: int, paciente: PacienteCreate) -> bool:
         """Actualiza los datos de un paciente activo en la tabla 'pacientes'.
@@ -89,9 +100,11 @@ class PacienteDAO:
                 estado_vital = ?
             WHERE id = ? AND estado = 1
         """
+        cedula_db = None if paciente.cedula in ("S/C", "", None) else paciente.cedula
+
         try:
             cursor.execute(query, (
-                paciente.cedula,
+                cedula_db,
                 paciente.nombre1,
                 paciente.nombre2,
                 paciente.apellido1,

@@ -4,6 +4,8 @@ from dao.conexion import ConexionDB
 
 
 class ColorDAO:
+    """DAO para operaciones CRUD sobre la tabla 'colores'."""
+
     def __init__(self):
         self.db = ConexionDB()
 
@@ -11,7 +13,10 @@ class ColorDAO:
         conn = self.db.obtener_conexion()
         cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO colores (valor, estado) VALUES (?, 1)", (color.valor,))
+            cursor.execute(
+                "INSERT INTO colores (valor, estado) VALUES (?, 1)",
+                (color.valor,),
+            )
             conn.commit()
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -20,7 +25,7 @@ class ColorDAO:
             conn.close()
 
     def obtener_todos(self) -> list[Color]:
-        """R (Read): Filtra colores activos."""
+        """Retorna todos los colores activos."""
         conn = self.db.obtener_conexion()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -30,21 +35,37 @@ class ColorDAO:
         return [Color(**dict(fila)) for fila in filas]
 
     def obtener_por_id(self, id_color: int) -> Color | None:
-        """Read: filtra un color por id."""
+        """Retorna un color activo por su ID."""
         conn = self.db.obtener_conexion()
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM colores WHERE id = ? AND estado = 1", (id_color,))
+        cursor.execute(
+            "SELECT * FROM colores WHERE id = ? AND estado = 1", (id_color,)
+        )
         fila = cursor.fetchone()
         conn.close()
         return Color(**dict(fila)) if fila else None
-    
+
+    def obtener_por_valor(self, valor: str) -> Color | None:
+        """Retorna un color activo por su nombre (valor)."""
+        conn = self.db.obtener_conexion()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM colores WHERE valor = ? AND estado = 1", (valor,)
+        )
+        fila = cursor.fetchone()
+        conn.close()
+        return Color(**dict(fila)) if fila else None
 
     def actualizar(self, id_color: int, color: ColorBase) -> bool:
         conn = self.db.obtener_conexion()
         cursor = conn.cursor()
         try:
-            cursor.execute("UPDATE colores SET valor = ? WHERE id = ? AND estado = 1", (color.valor, id_color))
+            cursor.execute(
+                "UPDATE colores SET valor = ? WHERE id = ? AND estado = 1",
+                (color.valor, id_color),
+            )
             conn.commit()
             return cursor.rowcount > 0
         finally:
@@ -54,7 +75,9 @@ class ColorDAO:
         conn = self.db.obtener_conexion()
         cursor = conn.cursor()
         try:
-            cursor.execute("UPDATE colores SET estado = 0 WHERE id = ?", (id_color,))
+            cursor.execute(
+                "UPDATE colores SET estado = 0 WHERE id = ?", (id_color,)
+            )
             conn.commit()
             return cursor.rowcount > 0
         finally:
