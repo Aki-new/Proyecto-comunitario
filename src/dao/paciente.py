@@ -2,16 +2,37 @@ import sqlite3
 from models.paciente import PacienteCreate, Paciente
 from dao.conexion import ConexionDB
 
+
 class PacienteDAO:
+    """DAO para operaciones CRUD sobre la tabla 'pacientes'."""
+
     def __init__(self):
         self.db = ConexionDB()
 
     def crear(self, paciente: PacienteCreate) -> int:
+        """Inserta un nuevo paciente en la base de datos.
+        Retorna el id del paciente creado, o -1 si la cédula ya existe.
+        """
         conn = self.db.obtener_conexion()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        query = "INSERT INTO pacientes (cedula, nombre1, nombre2, apellido1, apellido2, lugar_nacimiento, fecha_nacimiento, estado_vital, estado) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)"
+        query = """
+            INSERT INTO pacientes
+                (cedula, nombre1, nombre2, apellido1, apellido2,
+                 lugar_nacimiento, fecha_nacimiento, estado_vital, estado)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+        """
         try:
-            cursor.execute(query, (paciente.cedula, paciente.nombre1, paciente.nombre2, paciente.apellido1, paciente.apellido2, paciente.lugar_nacimiento, paciente.fecha_nacimiento, paciente.estado_vital, paciente.estado))
+            cursor.execute(query, (
+                paciente.cedula,
+                paciente.nombre1,
+                paciente.nombre2,
+                paciente.apellido1,
+                paciente.apellido2,
+                paciente.lugar_nacimiento,
+                paciente.fecha_nacimiento,
+                paciente.estado_vital,
+            ))
             conn.commit()
             return cursor.lastrowid
         except sqlite3.IntegrityError:
@@ -20,30 +41,84 @@ class PacienteDAO:
             conn.close()
 
     def obtener_por_id(self, id_paciente: int) -> Paciente | None:
-        """R (Read): Trae la tarjeta de un paciente, SIEMPRE Y CUANDO la tarjeta esté activa."""
+        """Obtiene un paciente activo por su ID desde la tabla 'pacientes'."""
         conn = self.db.obtener_conexion()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM tarjetas WHERE id_paciente = ? AND estado = 1", (id_paciente,))
+        cursor.execute(
+            "SELECT * FROM pacientes WHERE id = ? AND estado = 1",
+            (id_paciente,)
+        )
         fila = cursor.fetchone()
         conn.close()
         return Paciente(**dict(fila)) if fila else None
 
-    def actualizar(self, id_tarjeta: int, tarjeta: PacienteCreate) -> bool:
+    def obtener_por_cedula(self, cedula: str) -> Paciente | None:
+        """Obtiene un paciente activo por su número de cédula."""
+        conn = self.db.obtener_conexion()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT * FROM pacientes WHERE cedula = ? AND estado = 1",
+            (cedula,)
+        )
+        fila = cursor.fetchone()
+        conn.close()
+        return Paciente(**dict(fila)) if fila else None
+
+    def obtener_todos(self) -> list[Paciente]:
+        """Obtiene todos los pacientes activos."""
+        conn = self.db.obtener_conexion()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM pacientes WHERE estado = 1")
+        filas = cursor.fetchall()
+        conn.close()
+        return [Paciente(**dict(fila)) for fila in filas]
+
+    def actualizar(self, id_paciente: int, paciente: PacienteCreate) -> bool:
+        """Actualiza los datos de un paciente activo en la tabla 'pacientes'.
+        Retorna True si se actualizó al menos un registro.
+        """
         conn = self.db.obtener_conexion()
         cursor = conn.cursor()
-        query = "UPDATE tarjetas SET num_historia = ?, id_color = ? WHERE id = ? AND estado = 1"
+        query = """
+            UPDATE pacientes
+            SET cedula = ?, nombre1 = ?, nombre2 = ?, apellido1 = ?,
+                apellido2 = ?, lugar_nacimiento = ?, fecha_nacimiento = ?,
+                estado_vital = ?
+            WHERE id = ? AND estado = 1
+        """
         try:
-            cursor.execute(query, (tarjeta.num_historia, tarjeta.id_color, id_tarjeta))
+            cursor.execute(query, (
+                paciente.cedula,
+                paciente.nombre1,
+                paciente.nombre2,
+                paciente.apellido1,
+                paciente.apellido2,
+                paciente.lugar_nacimiento,
+                paciente.fecha_nacimiento,
+                paciente.estado_vital,
+                id_paciente,
+            ))
             conn.commit()
             return cursor.rowcount > 0
+        except sqlite3.IntegrityError:
+            return False
         finally:
             conn.close()
 
-    def soft_delete(self, id_tarjeta: int) -> bool:
+    def soft_delete(self, id_paciente: int) -> bool:
+        """Desactiva (borrado lógico) un paciente en la tabla 'pacientes'.
+        Retorna True si se desactivó al menos un registro.
+        """
         conn = self.db.obtener_conexion()
         cursor = conn.cursor()
         try:
-            cursor.execute("UPDATE tarjetas SET estado = 0 WHERE id = ?", (id_tarjeta,))
+            cursor.execute(
+                "UPDATE pacientes SET estado = 0 WHERE id = ? AND estado = 1",
+                (id_paciente,)
+            )
             conn.commit()
             return cursor.rowcount > 0
         finally:

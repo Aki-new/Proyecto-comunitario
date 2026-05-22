@@ -22,6 +22,7 @@ class TarjetaDAO:
     def obtener_por_paciente(self, id_paciente: int) -> Tarjeta | None:
         """R (Read): Trae la tarjeta de un paciente, SIEMPRE Y CUANDO la tarjeta esté activa."""
         conn = self.db.obtener_conexion()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM tarjetas WHERE id_paciente = ? AND estado = 1", (id_paciente,))
         fila = cursor.fetchone()

@@ -2,6 +2,7 @@ import sqlite3
 from models.color import ColorBase, Color
 from dao.conexion import ConexionDB
 
+
 class ColorDAO:
     def __init__(self):
         self.db = ConexionDB()
@@ -21,18 +22,19 @@ class ColorDAO:
     def obtener_todos(self) -> list[Color]:
         """R (Read): Filtra colores activos."""
         conn = self.db.obtener_conexion()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM colores WHERE estado = 1")
         filas = cursor.fetchall()
         conn.close()
         return [Color(**dict(fila)) for fila in filas]
-    
 
     def obtener_por_id(self, id_color: int) -> Color | None:
-        """Read: filtra un color por id"""
+        """Read: filtra un color por id."""
         conn = self.db.obtener_conexion()
+        conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT * FROM colores WHERE estado = 1 AND id_color = ?", (id_color,))
+        cursor.execute("SELECT * FROM colores WHERE id = ? AND estado = 1", (id_color,))
         fila = cursor.fetchone()
         conn.close()
         return Color(**dict(fila)) if fila else None
