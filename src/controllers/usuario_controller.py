@@ -81,3 +81,44 @@ class UsuarioController:
         if not eliminado:
             return False, "No se pudo desactivar el usuario."
         return True, "Usuario desactivado exitosamente."
+
+    def cambiar_clave(
+        self,
+        id_usuario: int,
+        clave_actual: str,
+        clave_nueva: str,
+        clave_confirmacion: str,
+    ) -> tuple[bool, str]:
+        """Cambia la contraseña de un usuario con verificación.
+
+        Valida que:
+        - Los campos no estén vacíos.
+        - La nueva clave tenga mínimo 4 caracteres.
+        - La nueva clave y la confirmación coincidan.
+        - La clave actual sea correcta (verificada contra el hash en BD).
+
+        Args:
+            id_usuario:         ID del usuario.
+            clave_actual:       Contraseña actual en texto plano.
+            clave_nueva:        Nueva contraseña en texto plano.
+            clave_confirmacion: Confirmación de la nueva contraseña.
+
+        Returns:
+            Tupla (exito, mensaje).
+        """
+        if not clave_actual or not clave_actual.strip():
+            return False, "Debe ingresar la contraseña actual."
+
+        if not clave_nueva or not clave_nueva.strip():
+            return False, "Debe ingresar la nueva contraseña."
+
+        if len(clave_nueva.strip()) < 4:
+            return False, "La nueva contraseña debe tener al menos 4 caracteres."
+
+        if clave_nueva != clave_confirmacion:
+            return False, "La nueva contraseña y la confirmación no coinciden."
+
+        return self.usuario_dao.cambiar_clave(
+            id_usuario, clave_actual.strip(), clave_nueva.strip()
+        )
+

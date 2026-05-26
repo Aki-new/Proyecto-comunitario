@@ -141,3 +141,51 @@ class UsuarioDAO:
             return Usuario(**fila_dict)
 
         return None
+
+    def cambiar_clave(
+        self, id_usuario: int, clave_actual: str, clave_nueva: str
+    ) -> tuple[bool, str]:
+        """Cambia la contraseña de un usuario verificando la clave actual.
+
+        Primero verifica que el hash de la clave actual coincida con el
+        almacenado. Solo si coincide, actualiza con el hash de la nueva clave.
+
+        Args:
+            id_usuario:   ID del usuario.
+            clave_actual: Contraseña actual en texto plano.
+            clave_nueva:  Nueva contraseña en texto plano.
+
+        Returns:
+            Tupla (exito, mensaje).
+        """
+        conn = self.db.obtener_conexion()
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Obtener hash actual almacenado
+        cursor.execute(
+            "SELECT clave FROM usuarios WHERE id = ? AND estado = 1",
+            (id_usuario,),
+        )
+        fila = cursor.fetchone()
+        if fila is None:
+            conn.close()
+            return False, "Usuario no encontrado o inactivo."
+
+        hash_actual_almacenado = fila["clave"]
+        hash_actual_ingresado = self._hash_clave(clave_actual)
+
+        if hash_actual_almacenado != hash_actual_ingresado:
+            conn.close()
+            return False, "La contraseña actual es incorrecta."
+
+        # Actualizar con la nueva clave hasheada
+        hash_nueva = self._hash_clave(clave_nueva)
+        cursor.execute(
+            "UPDATE usuarios SET clave = ? WHERE id = ? AND estado = 1",
+            (hash_nueva, id_usuario),
+        )
+        conn.commit()
+        conn.close()
+        return True, "Contraseña actualizada exitosamente."
+

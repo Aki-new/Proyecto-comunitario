@@ -37,10 +37,16 @@ class PacienteController:
             errores = self._formatear_errores(e)
             return False, "Errores de validacion:\n" + "\n".join(errores), None
 
+        # Validar cédula duplicada en backend (S/C se excluye)
+        if paciente.cedula not in ("S/C", "", None):
+            existente = self.paciente_dao.obtener_por_cedula(paciente.cedula)
+            if existente is not None:
+                return False, f"Ya existe un paciente con la cédula {paciente.cedula}.", None
+
         id_paciente = self.paciente_dao.crear(paciente)
 
         if id_paciente == -1:
-            return False, "Ya existe un paciente con esa cedula.", None
+            return False, "Error al registrar el paciente.", None
 
         return True, f"Paciente registrado exitosamente (ID: {id_paciente}).", id_paciente
 
@@ -71,9 +77,15 @@ class PacienteController:
             errores = self._formatear_errores(e)
             return False, "Errores en datos del paciente:\n" + "\n".join(errores)
 
+        # Validar cédula duplicada en backend (S/C se excluye)
+        if paciente.cedula not in ("S/C", "", None):
+            existente = self.paciente_dao.obtener_por_cedula(paciente.cedula)
+            if existente is not None:
+                return False, f"Ya existe un paciente con la cédula {paciente.cedula}."
+
         id_paciente = self.paciente_dao.crear(paciente)
         if id_paciente == -1:
-            return False, "Ya existe un paciente con esa cedula."
+            return False, "Error al registrar el paciente."
 
         # Resolver color automaticamente
         info_color = obtener_color_por_num_historia(num_historia)
@@ -130,16 +142,26 @@ class PacienteController:
         return self.paciente_dao.obtener_todos()
 
     def actualizar_paciente(self, id_paciente: int, datos: dict) -> tuple[bool, str]:
-        """Actualiza los datos de un paciente existente."""
+        """Actualiza los datos de un paciente existente.
+
+        Valida que la cédula no esté duplicada (excluyendo al paciente
+        que se está editando y excluyendo S/C).
+        """
         try:
             paciente = PacienteCreate(**datos)
         except ValidationError as e:
             errores = self._formatear_errores(e)
             return False, "Errores de validacion:\n" + "\n".join(errores)
 
+        # Validar cédula duplicada (excluir S/C y al propio paciente)
+        if paciente.cedula not in ("S/C", "", None):
+            existente = self.paciente_dao.obtener_por_cedula(paciente.cedula)
+            if existente is not None and existente.id != id_paciente:
+                return False, f"Ya existe otro paciente con la cédula {paciente.cedula}."
+
         actualizado = self.paciente_dao.actualizar(id_paciente, paciente)
         if not actualizado:
-            return False, "No se pudo actualizar. El paciente no existe, esta inactivo, o la cedula esta duplicada."
+            return False, "No se pudo actualizar el paciente."
         return True, "Paciente actualizado exitosamente."
 
     def eliminar_paciente(self, id_paciente: int) -> tuple[bool, str]:

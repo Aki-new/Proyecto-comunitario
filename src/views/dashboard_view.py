@@ -1,474 +1,457 @@
+"""
+Vista principal del Dashboard — SGI Salud.
+
+Panel principal con menú lateral de navegación y área de contenido.
+Gestiona la aplicación de temas en caliente y la carga dinámica de módulos.
+
+Cambios v2:
+    - Colores leídos dinámicamente desde config (no hardcodeados).
+    - Método aplicar_tema() reconfigura TODO el dashboard en caliente.
+    - Sidebar con scroll interno para responsive.
+    - Módulos reciben colores + fuentes como parámetros.
+"""
+
 import customtkinter as ctk
 from models.usuario import Usuario
+from models.config import cargar_config, AppConfig
+from models.tema import obtener_tema, obtener_tamano_fuente
 from views.pacientes_view import PacientesView
 from views.colores_view import ColoresView
 from views.usuarios_view import UsuariosView
+from views.configuracion_view import ConfiguracionView
 
 
 class DashboardView(ctk.CTkToplevel):
     """Panel principal del sistema (Dashboard).
-    Contiene un menú lateral con navegación y un área de contenido
-    principal donde se cargarán los distintos módulos.
+
+    Contiene un menú lateral con navegación, área de contenido donde
+    se cargan módulos, y sistema de temas dinámicos.
+
+    Atributos:
+        usuario:           Datos del usuario autenticado.
+        config:            Configuración actual (AppConfig).
+        colores:           Diccionario de colores del tema activo.
+        fuentes:           Diccionario de tamaños de fuente activos.
+        menu_seleccionado: Clave del módulo actualmente activo.
+        botones_menu:      Mapa clave → CTkButton del sidebar.
     """
 
-    # ── Paleta de colores ──────────────────────────────────────────
-    COLOR_BG = "#0F1923"
-    COLOR_SIDEBAR = "#141E2B"
-    COLOR_SIDEBAR_BORDER = "#1E3044"
-    COLOR_CONTENT = "#182633"
-    COLOR_ACCENT = "#00A8E8"
-    COLOR_ACCENT_HOVER = "#007BB5"
-    COLOR_TEXT = "#E8EDF2"
-    COLOR_TEXT_SEC = "#8899AA"
-    COLOR_TEXT_DIM = "#4A6275"
-    COLOR_BTN_HOVER = "#1E3044"
-    COLOR_HEADER = "#141E2B"
-    COLOR_SEPARATOR = "#1E3044"
-    COLOR_DANGER = "#FF4C6A"
-    COLOR_DANGER_HOVER = "#D93A5A"
-
-    # ── Opciones del menú lateral ─────────────────────────────────
     MENU_ITEMS = [
         {"texto": "📊  Inicio",          "clave": "inicio"},
         {"texto": "👤  Pacientes",        "clave": "pacientes"},
         {"texto": "🎨  Colores",          "clave": "colores"},
         {"texto": "👥  Usuarios",         "clave": "usuarios"},
+        {"texto": "⚙️  Configuración",    "clave": "configuracion"},
     ]
 
     def __init__(self, master, usuario: Usuario, on_logout: callable):
-        """
-        Args:
-            master: Ventana raíz (CTk).
-            usuario: Objeto Usuario con los datos del usuario autenticado.
-            on_logout: Callback que se ejecuta al cerrar sesión.
-        """
         super().__init__(master)
         self.usuario = usuario
         self.on_logout = on_logout
         self.menu_seleccionado = "inicio"
         self.botones_menu: dict[str, ctk.CTkButton] = {}
 
+        # Cargar config y derivar colores/fuentes
+        self.config = cargar_config()
+        self._cargar_colores_desde_config()
+
         self._configurar_ventana()
         self._crear_layout()
         self._mostrar_pagina_inicio()
-
         self.protocol("WM_DELETE_WINDOW", self._on_cerrar)
 
-    # ── Configuración de ventana ──────────────────────────────────
-    def _configurar_ventana(self):
-        self.title(
-            "Sistema de Gestión — Hospital Dr. Armando Delgado Montero"
-        )
-        self.configure(fg_color=self.COLOR_BG)
+    # ══════════════════════════════════════════════════════════════════
+    #  SISTEMA DE TEMAS
+    # ══════════════════════════════════════════════════════════════════
 
-        # Tamaño y centrado
-        ancho, alto = 1100, 680
-        pantalla_ancho = self.winfo_screenwidth()
-        pantalla_alto = self.winfo_screenheight()
-        x = (pantalla_ancho - ancho) // 2
-        y = (pantalla_alto - alto) // 2
-        self.geometry(f"{ancho}x{alto}+{x}+{y}")
-        self.minsize(900, 550)
+    def _cargar_colores_desde_config(self):
+        """Lee colores y fuentes de la config actual y los guarda como atributos."""
+        self.colores = obtener_tema(self.config)
+        self.fuentes = obtener_tamano_fuente(self.config)
 
-    # ── Layout principal ──────────────────────────────────────────
-    def _crear_layout(self):
-        # Contenedor principal con grid
-        self.grid_columnconfigure(0, weight=0)  # Sidebar fija
-        self.grid_columnconfigure(1, weight=1)  # Contenido expande
-        self.grid_rowconfigure(0, weight=1)
+    def aplicar_tema(self, nueva_config: AppConfig):
+        """Aplica un nuevo tema en caliente a todo el dashboard.
 
+        Destruye y reconstruye el sidebar completamente para que todos los
+        widgets internos (labels, separadores, scroll, perfil) tomen los
+        nuevos colores. También recarga la vista activa.
+
+        Args:
+            nueva_config: Nueva configuración con el tema a aplicar.
+        """
+        self.config = nueva_config
+        self._cargar_colores_desde_config()
+        c = self.colores
+
+        # Reconfigurar fondo principal
+        self.configure(fg_color=c["fondo"])
+
+        # ── Reconstruir sidebar completo ──
+        self.sidebar.destroy()
+        self.botones_menu.clear()
         self._crear_sidebar()
-        self._crear_area_contenido()
+        self._actualizar_estilo_menu(self.menu_seleccionado)
 
-    # ── Sidebar ───────────────────────────────────────────────────
-    def _crear_sidebar(self):
-        self.sidebar = ctk.CTkFrame(
-            self,
-            fg_color=self.COLOR_SIDEBAR,
-            corner_radius=0,
-            width=240,
-            border_width=0,
-        )
-        self.sidebar.grid(row=0, column=0, sticky="nsew")
-        self.sidebar.grid_propagate(False)
+        # ── Header y área de contenido ──
+        self.header_contenido.configure(fg_color=c["header"])
+        self.label_titulo_pagina.configure(text_color=c["texto"])
+        self.area_contenido.configure(fg_color=c["fondo"])
 
-        # ── Header del sidebar (info del hospital) ──
-        header = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        header.pack(fill="x", padx=16, pady=(20, 8))
-
-        icono = ctk.CTkFrame(
-            header, fg_color=self.COLOR_ACCENT,
-            corner_radius=12, width=42, height=42,
-        )
-        icono.pack(side="left", padx=(0, 12))
-        icono.pack_propagate(False)
-
-        ctk.CTkLabel(
-            icono, text="🏥", font=ctk.CTkFont(size=20),
-            text_color="#FFFFFF",
-        ).place(relx=0.5, rely=0.5, anchor="center")
-
-        info_frame = ctk.CTkFrame(header, fg_color="transparent")
-        info_frame.pack(side="left", fill="x", expand=True)
-
-        ctk.CTkLabel(
-            info_frame,
-            text="SGI Salud",
-            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
-            text_color=self.COLOR_TEXT,
-            anchor="w",
-        ).pack(fill="x")
-
-        ctk.CTkLabel(
-            info_frame,
-            text="Hospital DADM",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color=self.COLOR_TEXT_SEC,
-            anchor="w",
-        ).pack(fill="x")
-
-        # ── Separador ──
-        ctk.CTkFrame(
-            self.sidebar, fg_color=self.COLOR_SEPARATOR, height=1,
-        ).pack(fill="x", padx=16, pady=(16, 12))
-
-        # ── Label de sección ──
-        ctk.CTkLabel(
-            self.sidebar,
-            text="MENÚ PRINCIPAL",
-            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
-            text_color=self.COLOR_TEXT_DIM,
-            anchor="w",
-        ).pack(fill="x", padx=20, pady=(4, 8))
-
-        # ── Botones del menú ──
-        for item in self.MENU_ITEMS:
-            btn = ctk.CTkButton(
-                self.sidebar,
-                text=item["texto"],
-                height=40,
-                corner_radius=10,
-                font=ctk.CTkFont(family="Segoe UI", size=13),
-                fg_color="transparent",
-                hover_color=self.COLOR_BTN_HOVER,
-                text_color=self.COLOR_TEXT_SEC,
-                anchor="w",
-                command=lambda c=item["clave"]: self._seleccionar_menu(c),
-            )
-            btn.pack(fill="x", padx=12, pady=2)
-            self.botones_menu[item["clave"]] = btn
-
-        # Marcar "Inicio" como activo
-        self._actualizar_estilo_menu("inicio")
-
-        # ── Spacer para empujar perfil y logout al fondo ──
-        spacer = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        spacer.pack(fill="both", expand=True)
-
-        # ── Separador inferior ──
-        ctk.CTkFrame(
-            self.sidebar, fg_color=self.COLOR_SEPARATOR, height=1,
-        ).pack(fill="x", padx=16, pady=(0, 12))
-
-        # ── Perfil del usuario ──
-        perfil_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        perfil_frame.pack(fill="x", padx=16, pady=(0, 8))
-
-        avatar = ctk.CTkFrame(
-            perfil_frame, fg_color=self.COLOR_ACCENT,
-            corner_radius=20, width=36, height=36,
-        )
-        avatar.pack(side="left", padx=(0, 10))
-        avatar.pack_propagate(False)
-
-        iniciales = (
-            self.usuario.nombre[0].upper() + self.usuario.apellido[0].upper()
-        )
-        ctk.CTkLabel(
-            avatar, text=iniciales,
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color="#FFFFFF",
-        ).place(relx=0.5, rely=0.5, anchor="center")
-
-        user_info = ctk.CTkFrame(perfil_frame, fg_color="transparent")
-        user_info.pack(side="left", fill="x", expand=True)
-
-        ctk.CTkLabel(
-            user_info,
-            text=f"{self.usuario.nombre} {self.usuario.apellido}",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            text_color=self.COLOR_TEXT,
-            anchor="w",
-        ).pack(fill="x")
-
-        ctk.CTkLabel(
-            user_info,
-            text=f"@{self.usuario.usuario}",
-            font=ctk.CTkFont(family="Segoe UI", size=10),
-            text_color=self.COLOR_TEXT_SEC,
-            anchor="w",
-        ).pack(fill="x")
-
-        # ── Botón cerrar sesión ──
-        self.btn_logout = ctk.CTkButton(
-            self.sidebar,
-            text="🚪  Cerrar Sesión",
-            height=38,
-            corner_radius=10,
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            fg_color=self.COLOR_DANGER,
-            hover_color=self.COLOR_DANGER_HOVER,
-            text_color="#FFFFFF",
-            command=self._cerrar_sesion,
-        )
-        self.btn_logout.pack(fill="x", padx=12, pady=(4, 16))
-
-    # ── Área de contenido ─────────────────────────────────────────
-    def _crear_area_contenido(self):
-        self.area_contenido = ctk.CTkFrame(
-            self,
-            fg_color=self.COLOR_BG,
-            corner_radius=0,
-        )
-        self.area_contenido.grid(row=0, column=1, sticky="nsew", padx=(0, 0))
-
-        # ── Header del contenido ──
-        self.header_contenido = ctk.CTkFrame(
-            self.area_contenido,
-            fg_color=self.COLOR_HEADER,
-            corner_radius=0,
-            height=56,
-        )
-        self.header_contenido.pack(fill="x")
-        self.header_contenido.pack_propagate(False)
-
-        self.label_titulo_pagina = ctk.CTkLabel(
-            self.header_contenido,
-            text="Inicio",
-            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
-            text_color=self.COLOR_TEXT,
-            anchor="w",
-        )
-        self.label_titulo_pagina.pack(side="left", padx=24, pady=12)
-
-        # ── Contenedor donde se cargarán los módulos ──
-        self.contenedor_pagina = ctk.CTkFrame(
-            self.area_contenido,
-            fg_color="transparent",
-        )
-        self.contenedor_pagina.pack(fill="both", expand=True, padx=20, pady=20)
-
-    # ── Navegación del menú ───────────────────────────────────────
-    def _seleccionar_menu(self, clave: str):
-        """Cambia la sección activa del dashboard."""
-        if clave == self.menu_seleccionado:
-            return
-
-        self.menu_seleccionado = clave
-        self._actualizar_estilo_menu(clave)
+        # ── Recargar la vista activa ──
         self._limpiar_contenido()
-
-        # Títulos legibles para el header
-        titulos = {
-            "inicio": "Inicio",
-            "pacientes": "Gestión de Pacientes",
-            "colores": "Referencia de Colores",
-            "usuarios": "Gestión de Usuarios",
-        }
-        self.label_titulo_pagina.configure(text=titulos.get(clave, clave))
-
-        # Cargar la página correspondiente
         paginas = {
             "inicio": self._mostrar_pagina_inicio,
             "pacientes": lambda: self._cargar_modulo_vista(PacientesView),
             "colores": lambda: self._cargar_modulo_vista(ColoresView),
             "usuarios": lambda: self._cargar_modulo_vista(UsuariosView),
+            "configuracion": self._mostrar_configuracion,
         }
-        pagina_fn = paginas.get(clave, self._mostrar_pagina_placeholder)
-        pagina_fn()
+        fn = paginas.get(self.menu_seleccionado, self._mostrar_pagina_inicio)
+        fn()
+
+    # ══════════════════════════════════════════════════════════════════
+    #  CONFIGURACIÓN DE VENTANA
+    # ══════════════════════════════════════════════════════════════════
+
+    def _configurar_ventana(self):
+        self.title("Sistema de Gestión — Hospital Dr. Armando Delgado Montero")
+        self.configure(fg_color=self.colores["fondo"])
+        ancho, alto = 1100, 700
+        x = (self.winfo_screenwidth() - ancho) // 2
+        y = (self.winfo_screenheight() - alto) // 2
+        self.geometry(f"{ancho}x{alto}+{x}+{y}")
+        self.minsize(850, 520)
+
+    # ══════════════════════════════════════════════════════════════════
+    #  LAYOUT PRINCIPAL
+    # ══════════════════════════════════════════════════════════════════
+
+    def _crear_layout(self):
+        self.grid_columnconfigure(0, weight=0)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+        self._crear_sidebar()
+        self._crear_area_contenido()
+
+    # ══════════════════════════════════════════════════════════════════
+    #  SIDEBAR (responsive con scroll interno)
+    # ══════════════════════════════════════════════════════════════════
+
+    def _crear_sidebar(self):
+        c = self.colores
+        self._widgets_sidebar_dinamicos = []
+
+        self.sidebar = ctk.CTkFrame(
+            self, fg_color=c["sidebar"], corner_radius=0, width=230,
+        )
+        self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self.sidebar.grid_propagate(False)
+        self.sidebar.grid_rowconfigure(1, weight=1)  # scroll area expande
+        self.sidebar.grid_columnconfigure(0, weight=1)
+
+        # ── Header (logo + nombre) ──
+        header = ctk.CTkFrame(self.sidebar, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=14, pady=(16, 0))
+
+        icono = ctk.CTkFrame(
+            header, fg_color=c["acento"], corner_radius=10, width=36, height=36,
+        )
+        icono.pack(side="left", padx=(0, 10))
+        icono.pack_propagate(False)
+        ctk.CTkLabel(
+            icono, text="🏥", font=ctk.CTkFont(size=18), text_color="#FFFFFF",
+        ).place(relx=0.5, rely=0.5, anchor="center")
+
+        info = ctk.CTkFrame(header, fg_color="transparent")
+        info.pack(side="left", fill="x", expand=True)
+        ctk.CTkLabel(
+            info, text="SGI Salud",
+            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            text_color=c["texto"], anchor="w",
+        ).pack(fill="x")
+        ctk.CTkLabel(
+            info, text="Hospital DADM",
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color=c["texto_secundario"], anchor="w",
+        ).pack(fill="x")
+
+        # ── Zona central scrollable (menú + perfil + logout) ──
+        scroll_sidebar = ctk.CTkScrollableFrame(
+            self.sidebar, fg_color="transparent",
+            scrollbar_button_color=c["entrada_fondo"],
+            scrollbar_button_hover_color=c["acento"],
+        )
+        scroll_sidebar.grid(row=1, column=0, sticky="nsew", padx=0, pady=(6, 0))
+
+        # Separador
+        sep1 = ctk.CTkFrame(scroll_sidebar, fg_color=c["separador"], height=1)
+        sep1.pack(fill="x", padx=14, pady=(4, 8))
+        self._widgets_sidebar_dinamicos.append(sep1)
+
+        # Label de sección
+        ctk.CTkLabel(
+            scroll_sidebar, text="MENÚ PRINCIPAL",
+            font=ctk.CTkFont(family="Segoe UI", size=9, weight="bold"),
+            text_color=c["texto_tenue"], anchor="w",
+        ).pack(fill="x", padx=18, pady=(0, 6))
+
+        # Botones del menú
+        for item in self.MENU_ITEMS:
+            btn = ctk.CTkButton(
+                scroll_sidebar, text=item["texto"], height=36, corner_radius=8,
+                font=ctk.CTkFont(family="Segoe UI", size=12),
+                fg_color="transparent", hover_color=c["boton_hover"],
+                text_color=c["texto_secundario"], anchor="w",
+                command=lambda k=item["clave"]: self._seleccionar_menu(k),
+            )
+            btn.pack(fill="x", padx=10, pady=1)
+            self.botones_menu[item["clave"]] = btn
+
+        self._actualizar_estilo_menu("inicio")
+
+        # Spacer
+        ctk.CTkFrame(scroll_sidebar, fg_color="transparent", height=20).pack()
+
+        # Separador inferior
+        sep2 = ctk.CTkFrame(scroll_sidebar, fg_color=c["separador"], height=1)
+        sep2.pack(fill="x", padx=14, pady=(0, 8))
+        self._widgets_sidebar_dinamicos.append(sep2)
+
+        # ── Perfil del usuario ──
+        perfil = ctk.CTkFrame(scroll_sidebar, fg_color="transparent")
+        perfil.pack(fill="x", padx=14, pady=(0, 6))
+
+        self.avatar_frame = ctk.CTkFrame(
+            perfil, fg_color=c["acento"], corner_radius=18, width=32, height=32,
+        )
+        self.avatar_frame.pack(side="left", padx=(0, 8))
+        self.avatar_frame.pack_propagate(False)
+        iniciales = self.usuario.nombre[0].upper() + self.usuario.apellido[0].upper()
+        ctk.CTkLabel(
+            self.avatar_frame, text=iniciales,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            text_color="#FFFFFF",
+        ).place(relx=0.5, rely=0.5, anchor="center")
+
+        user_info = ctk.CTkFrame(perfil, fg_color="transparent")
+        user_info.pack(side="left", fill="x", expand=True)
+        self.label_nombre_usuario = ctk.CTkLabel(
+            user_info,
+            text=f"{self.usuario.nombre} {self.usuario.apellido}",
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            text_color=c["texto"], anchor="w",
+        )
+        self.label_nombre_usuario.pack(fill="x")
+        self.label_username = ctk.CTkLabel(
+            user_info, text=f"@{self.usuario.usuario}",
+            font=ctk.CTkFont(family="Segoe UI", size=9),
+            text_color=c["texto_secundario"], anchor="w",
+        )
+        self.label_username.pack(fill="x")
+
+        # Botón cerrar sesión
+        self.btn_logout = ctk.CTkButton(
+            scroll_sidebar, text="🚪  Cerrar Sesión", height=34, corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
+            fg_color=c["peligro"], hover_color=c["peligro_hover"],
+            text_color="#FFFFFF", command=self._cerrar_sesion,
+        )
+        self.btn_logout.pack(fill="x", padx=10, pady=(4, 12))
+
+    # ══════════════════════════════════════════════════════════════════
+    #  ÁREA DE CONTENIDO
+    # ══════════════════════════════════════════════════════════════════
+
+    def _crear_area_contenido(self):
+        c = self.colores
+        self.area_contenido = ctk.CTkFrame(
+            self, fg_color=c["fondo"], corner_radius=0,
+        )
+        self.area_contenido.grid(row=0, column=1, sticky="nsew")
+
+        self.header_contenido = ctk.CTkFrame(
+            self.area_contenido, fg_color=c["header"], corner_radius=0, height=48,
+        )
+        self.header_contenido.pack(fill="x")
+        self.header_contenido.pack_propagate(False)
+
+        self.label_titulo_pagina = ctk.CTkLabel(
+            self.header_contenido, text="Inicio",
+            font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold"),
+            text_color=c["texto"], anchor="w",
+        )
+        self.label_titulo_pagina.pack(side="left", padx=20, pady=10)
+
+        self.contenedor_pagina = ctk.CTkFrame(
+            self.area_contenido, fg_color="transparent",
+        )
+        self.contenedor_pagina.pack(fill="both", expand=True, padx=16, pady=16)
+
+    # ══════════════════════════════════════════════════════════════════
+    #  NAVEGACIÓN
+    # ══════════════════════════════════════════════════════════════════
+
+    def _seleccionar_menu(self, clave: str):
+        if clave == self.menu_seleccionado:
+            return
+        self.menu_seleccionado = clave
+        self._actualizar_estilo_menu(clave)
+        self._limpiar_contenido()
+
+        titulos = {
+            "inicio": "Inicio", "pacientes": "Gestión de Pacientes",
+            "colores": "Referencia de Colores", "usuarios": "Gestión de Usuarios",
+            "configuracion": "Configuración",
+        }
+        self.label_titulo_pagina.configure(text=titulos.get(clave, clave))
+
+        paginas = {
+            "inicio": self._mostrar_pagina_inicio,
+            "pacientes": lambda: self._cargar_modulo_vista(PacientesView),
+            "colores": lambda: self._cargar_modulo_vista(ColoresView),
+            "usuarios": lambda: self._cargar_modulo_vista(UsuariosView),
+            "configuracion": self._mostrar_configuracion,
+        }
+        paginas.get(clave, self._mostrar_pagina_placeholder)()
 
     def _cargar_modulo_vista(self, vista_class):
-        """Instancia un módulo de vista y lo coloca en el área de contenido."""
-        modulo = vista_class(self.contenedor_pagina)
+        """Instancia una vista pasándole el tema y fuentes actuales."""
+        modulo = vista_class(
+            self.contenedor_pagina,
+            tema=self.colores,
+            fuentes=self.fuentes,
+        )
         modulo.pack(fill="both", expand=True)
 
+    def _mostrar_configuracion(self):
+        vista = ConfiguracionView(
+            self.contenedor_pagina,
+            config=self.config,
+            on_config_changed=self._on_config_changed,
+            tema=self.colores,
+            fuentes=self.fuentes,
+        )
+        vista.pack(fill="both", expand=True)
+
+    def _on_config_changed(self, nueva_config: AppConfig):
+        """Aplica el nuevo tema en caliente a toda la app."""
+        self.aplicar_tema(nueva_config)
+
     def _actualizar_estilo_menu(self, clave_activa: str):
-        """Resalta el botón del menú activo y resetea los demás."""
+        c = self.colores
         for clave, btn in self.botones_menu.items():
             if clave == clave_activa:
                 btn.configure(
-                    fg_color=self.COLOR_ACCENT,
-                    text_color="#FFFFFF",
-                    hover_color=self.COLOR_ACCENT_HOVER,
+                    fg_color=c["acento"], text_color="#FFFFFF",
+                    hover_color=c["acento_hover"],
                 )
             else:
                 btn.configure(
-                    fg_color="transparent",
-                    text_color=self.COLOR_TEXT_SEC,
-                    hover_color=self.COLOR_BTN_HOVER,
+                    fg_color="transparent", text_color=c["texto_secundario"],
+                    hover_color=c["boton_hover"],
                 )
 
     def _limpiar_contenido(self):
-        """Destruye todos los widgets dentro del contenedor de página."""
         for widget in self.contenedor_pagina.winfo_children():
             widget.destroy()
 
-    # ── Páginas de contenido ──────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════
+    #  PÁGINA DE INICIO
+    # ══════════════════════════════════════════════════════════════════
+
     def _mostrar_pagina_inicio(self):
-        """Página de bienvenida con tarjetas de resumen."""
-        # ── Mensaje de bienvenida ──
-        bienvenida_frame = ctk.CTkFrame(
-            self.contenedor_pagina, fg_color=self.COLOR_CONTENT,
-            corner_radius=14, border_width=1,
-            border_color=self.COLOR_SIDEBAR_BORDER,
+        c = self.colores
+
+        # Bienvenida
+        bienvenida = ctk.CTkFrame(
+            self.contenedor_pagina, fg_color=c["panel"],
+            corner_radius=12, border_width=1, border_color=c["entrada_borde"],
         )
-        bienvenida_frame.pack(fill="x", pady=(0, 20))
+        bienvenida.pack(fill="x", pady=(0, 16))
 
         ctk.CTkLabel(
-            bienvenida_frame,
+            bienvenida,
             text=f"Bienvenido/a, {self.usuario.nombre} {self.usuario.apellido}",
-            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
-            text_color=self.COLOR_TEXT,
-            anchor="w",
-        ).pack(fill="x", padx=24, pady=(20, 4))
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            text_color=c["texto"], anchor="w",
+        ).pack(fill="x", padx=20, pady=(16, 2))
 
         ctk.CTkLabel(
-            bienvenida_frame,
+            bienvenida,
             text="Sistema de Gestión de Información Estadística y Registros de Salud",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color=self.COLOR_TEXT_SEC,
-            anchor="w",
-        ).pack(fill="x", padx=24, pady=(0, 20))
-
-        # ── Tarjetas de resumen (cards) ──
-        cards_frame = ctk.CTkFrame(
-            self.contenedor_pagina, fg_color="transparent",
-        )
-        cards_frame.pack(fill="x", pady=(0, 20))
-
-        cards_data = [
-            {"titulo": "Pacientes",  "icono": "👤", "desc": "Busqueda, registro y gestion"},
-            {"titulo": "Colores",    "icono": "🎨", "desc": "Referencia de clasificacion"},
-            {"titulo": "Usuarios",   "icono": "👥", "desc": "Administracion de accesos"},
-        ]
-
-        for i, card_data in enumerate(cards_data):
-            cards_frame.grid_columnconfigure(i, weight=1)
-            card = self._crear_card_resumen(
-                cards_frame,
-                card_data["titulo"],
-                card_data["icono"],
-                card_data["desc"],
-            )
-            card.grid(row=0, column=i, padx=6, pady=0, sticky="nsew")
-
-        # ── Información del sistema ──
-        info_frame = ctk.CTkFrame(
-            self.contenedor_pagina, fg_color=self.COLOR_CONTENT,
-            corner_radius=14, border_width=1,
-            border_color=self.COLOR_SIDEBAR_BORDER,
-        )
-        info_frame.pack(fill="x", pady=(0, 10))
-
-        ctk.CTkLabel(
-            info_frame,
-            text="ℹ️  Acerca del sistema",
-            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
-            text_color=self.COLOR_TEXT,
-            anchor="w",
-        ).pack(fill="x", padx=24, pady=(16, 4))
-
-        ctk.CTkLabel(
-            info_frame,
-            text=(
-                "Utilice el menú lateral para navegar entre los distintos "
-                "módulos del sistema. Cada sección le permitirá gestionar "
-                "los registros correspondientes."
-            ),
             font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color=self.COLOR_TEXT_SEC,
-            anchor="w",
-            wraplength=600,
-        ).pack(fill="x", padx=24, pady=(0, 16))
+            text_color=c["texto_secundario"], anchor="w",
+        ).pack(fill="x", padx=20, pady=(0, 16))
 
-    def _crear_card_resumen(
-        self, parent, titulo: str, icono: str, descripcion: str
-    ) -> ctk.CTkFrame:
-        """Crea una tarjeta de resumen visual para la página de inicio."""
-        card = ctk.CTkFrame(
-            parent, fg_color=self.COLOR_CONTENT,
-            corner_radius=12, border_width=1,
-            border_color=self.COLOR_SIDEBAR_BORDER,
-            height=120,
+        # Cards de resumen
+        cards_frame = ctk.CTkFrame(self.contenedor_pagina, fg_color="transparent")
+        cards_frame.pack(fill="x", pady=(0, 16))
+
+        cards = [
+            ("Pacientes", "👤", "Busqueda, registro y gestion"),
+            ("Colores", "🎨", "Referencia de clasificacion"),
+            ("Usuarios", "👥", "Administracion de accesos"),
+        ]
+        for i, (titulo, icono, desc) in enumerate(cards):
+            cards_frame.grid_columnconfigure(i, weight=1)
+            card = ctk.CTkFrame(
+                cards_frame, fg_color=c["panel"], corner_radius=10,
+                border_width=1, border_color=c["entrada_borde"], height=100,
+            )
+            card.grid(row=0, column=i, padx=4, sticky="nsew")
+            card.pack_propagate(False)
+            ctk.CTkLabel(
+                card, text=icono, font=ctk.CTkFont(size=24),
+            ).pack(padx=14, pady=(12, 2), anchor="w")
+            ctk.CTkLabel(
+                card, text=titulo,
+                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+                text_color=c["texto"], anchor="w",
+            ).pack(fill="x", padx=14)
+            ctk.CTkLabel(
+                card, text=desc,
+                font=ctk.CTkFont(family="Segoe UI", size=10),
+                text_color=c["texto_secundario"], anchor="w",
+            ).pack(fill="x", padx=14)
+
+        # Info
+        info = ctk.CTkFrame(
+            self.contenedor_pagina, fg_color=c["panel"], corner_radius=12,
+            border_width=1, border_color=c["entrada_borde"],
         )
-        card.pack_propagate(False)
-
+        info.pack(fill="x")
         ctk.CTkLabel(
-            card, text=icono,
-            font=ctk.CTkFont(size=28),
-        ).pack(padx=16, pady=(16, 4), anchor="w")
-
+            info, text="ℹ️  Acerca del sistema",
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            text_color=c["texto"], anchor="w",
+        ).pack(fill="x", padx=20, pady=(14, 2))
         ctk.CTkLabel(
-            card, text=titulo,
-            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
-            text_color=self.COLOR_TEXT, anchor="w",
-        ).pack(fill="x", padx=16, pady=(0, 2))
-
-        ctk.CTkLabel(
-            card, text=descripcion,
+            info, text="Utilice el menú lateral para navegar entre módulos.",
             font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color=self.COLOR_TEXT_SEC, anchor="w",
-        ).pack(fill="x", padx=16)
-
-        return card
+            text_color=c["texto_secundario"], anchor="w",
+        ).pack(fill="x", padx=20, pady=(0, 14))
 
     def _mostrar_pagina_placeholder(self):
-        """Página temporal para módulos que aún no están implementados."""
-        placeholder = ctk.CTkFrame(
-            self.contenedor_pagina, fg_color=self.COLOR_CONTENT,
-            corner_radius=14, border_width=1,
-            border_color=self.COLOR_SIDEBAR_BORDER,
+        c = self.colores
+        ph = ctk.CTkFrame(
+            self.contenedor_pagina, fg_color=c["panel"],
+            corner_radius=12, border_width=1, border_color=c["entrada_borde"],
         )
-        placeholder.pack(fill="both", expand=True)
-
+        ph.pack(fill="both", expand=True)
+        ctk.CTkLabel(ph, text="🚧", font=ctk.CTkFont(size=48)).pack(pady=(60, 10))
         ctk.CTkLabel(
-            placeholder, text="🚧",
-            font=ctk.CTkFont(size=48),
-        ).pack(pady=(60, 10))
-
-        ctk.CTkLabel(
-            placeholder,
-            text="Módulo en Construcción",
+            ph, text="Módulo en Construcción",
             font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
-            text_color=self.COLOR_TEXT,
-        ).pack(pady=(0, 8))
-
-        ctk.CTkLabel(
-            placeholder,
-            text="Esta sección estará disponible próximamente.",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color=self.COLOR_TEXT_SEC,
+            text_color=c["texto"],
         ).pack()
 
-    # ── Acciones ──────────────────────────────────────────────────
+    # ══════════════════════════════════════════════════════════════════
+    #  ACCIONES
+    # ══════════════════════════════════════════════════════════════════
+
     def _cerrar_sesion(self):
-        """Cierra sesión y ejecuta el callback de logout."""
         self.destroy()
         self.on_logout()
 
     def _on_cerrar(self):
-        """Al cerrar la ventana principal, se cierra toda la aplicación."""
         self.master.destroy()
-
-    # ── Método público para cargar contenido externo ──────────────
-    def cargar_modulo(self, clave: str, widget_class, **kwargs):
-        """Permite registrar e instanciar módulos externos en el área de contenido.
-
-        Args:
-            clave: Clave del menú asociada.
-            widget_class: Clase del widget/frame a instanciar.
-            **kwargs: Argumentos adicionales para el constructor del widget.
-        """
-        self._limpiar_contenido()
-        modulo = widget_class(self.contenedor_pagina, **kwargs)
-        modulo.pack(fill="both", expand=True)

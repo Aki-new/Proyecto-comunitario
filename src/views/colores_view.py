@@ -1,127 +1,125 @@
+"""
+Vista de Referencia de Colores — SGI Salud.
+
+Muestra los 10 colores del sistema y sus rangos de número de historia
+en una cuadrícula visual de solo lectura con scroll para responsive.
+
+Acepta tema y fuentes dinámicos pasados desde el dashboard.
+"""
+
 import customtkinter as ctk
 from controllers.color_controller import ColorController
 
 
 class ColoresView(ctk.CTkFrame):
-    """Modulo de referencia de colores del hospital.
-    Muestra los 10 colores y sus rangos de numero de historia en una
-    cuadricula visual de solo lectura.
+    """Módulo de referencia de colores del hospital.
+
+    Muestra los 10 colores y sus rangos de número de historia en una
+    cuadrícula visual de 2 columnas × 5 filas.
+
+    Args:
+        parent:  Widget padre.
+        tema:    Dict de colores del tema activo.
+        fuentes: Dict de tamaños de fuente activos.
     """
 
-    # -- Paleta de colores -----------------------------------------------------
-    COLOR_BG = "#0F1923"
-    COLOR_PANEL = "#182633"
-    COLOR_ACCENT = "#00A8E8"
-    COLOR_ACCENT_HOVER = "#007BB5"
-    COLOR_TEXT = "#E8EDF2"
-    COLOR_TEXT_SEC = "#8899AA"
-    COLOR_ENTRY_BG = "#1E3044"
-    COLOR_ENTRY_BORDER = "#2A4158"
-    COLOR_ERROR = "#FF4C6A"
-    COLOR_SUCCESS = "#00D68F"
-    COLOR_ROW_ALT = "#1A2D3D"
-
-    def __init__(self, parent, **kwargs):
+    def __init__(self, parent, tema=None, fuentes=None, **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
+
+        # Colores dinámicos
+        t = tema or {}
+        self.COLOR_BG = t.get("fondo", "#0F1923")
+        self.COLOR_PANEL = t.get("panel", "#182633")
+        self.COLOR_ACCENT = t.get("acento", "#00A8E8")
+        self.COLOR_TEXT = t.get("texto", "#E8EDF2")
+        self.COLOR_TEXT_SEC = t.get("texto_secundario", "#8899AA")
+        self.COLOR_ENTRY_BG = t.get("entrada_fondo", "#1E3044")
+        self.COLOR_ENTRY_BORDER = t.get("entrada_borde", "#2A4158")
+        self.COLOR_ERROR = t.get("error", "#FF4C6A")
+
         self.controller = ColorController()
         self._crear_widgets()
         self._cargar_datos()
 
-    # ==========================================================================
-    # Construccion de la interfaz
-    # ==========================================================================
+    # ══════════════════════════════════════════════════════════════════
+    #  INTERFAZ
+    # ══════════════════════════════════════════════════════════════════
 
     def _crear_widgets(self):
-        """Construye la tarjeta de encabezado, la cuadricula de colores
-        y la nota informativa.
-        """
+        """Encabezado, cuadrícula scrollable y nota informativa."""
 
-        # -- Tarjeta de encabezado ---------------------------------------------
-        header_card = ctk.CTkFrame(
-            self, fg_color=self.COLOR_PANEL,
-            corner_radius=12, border_width=1,
-            border_color=self.COLOR_ENTRY_BORDER,
+        # ── Encabezado ──
+        header = ctk.CTkFrame(
+            self, fg_color=self.COLOR_PANEL, corner_radius=12,
+            border_width=1, border_color=self.COLOR_ENTRY_BORDER,
         )
-        header_card.pack(fill="x", pady=(0, 16))
+        header.pack(fill="x", pady=(0, 12))
 
         ctk.CTkLabel(
-            header_card,
-            text="Referencia de Colores",
-            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
-            text_color=self.COLOR_TEXT,
-            anchor="w",
-        ).pack(fill="x", padx=24, pady=(20, 4))
+            header, text="Referencia de Colores",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            text_color=self.COLOR_TEXT, anchor="w",
+        ).pack(fill="x", padx=20, pady=(16, 2))
 
         ctk.CTkLabel(
-            header_card,
+            header,
             text=(
-                "Cada tarjeta de historia clinica se clasifica por un color "
-                "determinado automaticamente segun el ultimo par de digitos del "
-                "numero de historia. A continuacion se muestra la tabla completa "
-                "de colores y sus rangos correspondientes."
+                "Cada tarjeta de historia clínica se clasifica por un color "
+                "determinado automáticamente según el último par de dígitos "
+                "del número de historia."
             ),
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color=self.COLOR_TEXT_SEC,
-            anchor="w",
-            wraplength=700,
-        ).pack(fill="x", padx=24, pady=(0, 20))
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color=self.COLOR_TEXT_SEC, anchor="w", wraplength=600,
+        ).pack(fill="x", padx=20, pady=(0, 16))
 
-        # -- Mensaje de error (oculto por defecto) -----------------------------
+        # ── Mensaje de error ──
         self.label_mensaje = ctk.CTkLabel(
             self, text="",
             font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color=self.COLOR_ERROR,
-            anchor="w",
+            text_color=self.COLOR_ERROR, anchor="w",
         )
         self.label_mensaje.pack(fill="x", padx=4, pady=(0, 4))
 
-        # -- Contenedor de la cuadricula de colores ----------------------------
-        self.grid_frame = ctk.CTkFrame(
+        # ── Contenedor scrollable para las tarjetas de colores ──
+        self.scroll_colores = ctk.CTkScrollableFrame(
             self, fg_color="transparent",
+            scrollbar_button_color=self.COLOR_ENTRY_BG,
+            scrollbar_button_hover_color=self.COLOR_ACCENT,
         )
-        self.grid_frame.pack(fill="both", expand=True, pady=(0, 12))
+        self.scroll_colores.pack(fill="both", expand=True, pady=(0, 8))
+        self.scroll_colores.grid_columnconfigure(0, weight=1)
+        self.scroll_colores.grid_columnconfigure(1, weight=1)
 
-        # Configurar 2 columnas con peso igual
-        self.grid_frame.grid_columnconfigure(0, weight=1)
-        self.grid_frame.grid_columnconfigure(1, weight=1)
-
-        # -- Nota informativa --------------------------------------------------
-        nota_frame = ctk.CTkFrame(
-            self, fg_color=self.COLOR_PANEL,
-            corner_radius=12, border_width=1,
-            border_color=self.COLOR_ENTRY_BORDER,
+        # ── Nota informativa ──
+        nota = ctk.CTkFrame(
+            self, fg_color=self.COLOR_PANEL, corner_radius=10,
+            border_width=1, border_color=self.COLOR_ENTRY_BORDER,
         )
-        nota_frame.pack(fill="x", pady=(0, 4))
+        nota.pack(fill="x", pady=(0, 4))
 
         ctk.CTkLabel(
-            nota_frame,
-            text="Nota",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            text_color=self.COLOR_ACCENT,
-            anchor="w",
-        ).pack(fill="x", padx=24, pady=(14, 2))
+            nota, text="Nota",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            text_color=self.COLOR_ACCENT, anchor="w",
+        ).pack(fill="x", padx=20, pady=(10, 2))
 
         ctk.CTkLabel(
-            nota_frame,
+            nota,
             text=(
-                "Los colores se asignan automaticamente al registrar una tarjeta. "
-                "Se determina por el primer digito (decena) del ultimo par del "
-                "numero de historia clinica. Por ejemplo, si el numero es "
-                "03-77-34, el ultimo par es 34, la decena es 3, y el color "
-                "asignado sera Naranja."
+                "Los colores se asignan automáticamente al registrar una tarjeta. "
+                "Se determina por la decena del último par del número de historia. "
+                "Ejemplo: 03-77-34 → último par 34 → decena 3 → Naranja."
             ),
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color=self.COLOR_TEXT_SEC,
-            anchor="w",
-            wraplength=700,
-        ).pack(fill="x", padx=24, pady=(0, 14))
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=self.COLOR_TEXT_SEC, anchor="w", wraplength=550,
+        ).pack(fill="x", padx=20, pady=(0, 10))
 
-    # ==========================================================================
-    # Carga de datos
-    # ==========================================================================
+    # ══════════════════════════════════════════════════════════════════
+    #  CARGA DE DATOS
+    # ══════════════════════════════════════════════════════════════════
 
     def _cargar_datos(self):
-        """Obtiene la referencia de colores del controlador y renderiza las cards."""
+        """Obtiene la referencia de colores y renderiza las cards."""
         try:
             colores = self.controller.obtener_referencia_colores()
             self._renderizar_colores(colores)
@@ -132,79 +130,59 @@ class ColoresView(ctk.CTkFrame):
             )
 
     def _renderizar_colores(self, colores: list[dict]):
-        """Crea las tarjetas de color en la cuadricula (2 columnas x 5 filas)."""
+        """Crea las tarjetas en la cuadrícula scrollable (2 col × 5 filas)."""
         for idx, color_data in enumerate(colores):
             fila = idx // 2
             columna = idx % 2
-
             card = self._crear_card_color(
-                self.grid_frame,
+                self.scroll_colores,
                 nombre=color_data["nombre"],
                 rango=color_data["rango"],
                 hex_color=color_data["hex"],
             )
-            card.grid(
-                row=fila, column=columna,
-                padx=8, pady=8, sticky="nsew",
-            )
+            card.grid(row=fila, column=columna, padx=6, pady=6, sticky="nsew")
 
-        # Configurar las filas para que tengan peso
         for fila in range((len(colores) + 1) // 2):
-            self.grid_frame.grid_rowconfigure(fila, weight=1)
+            self.scroll_colores.grid_rowconfigure(fila, weight=1)
 
-    def _crear_card_color(
-        self, parent, nombre: str, rango: str, hex_color: str
-    ) -> ctk.CTkFrame:
-        """Crea una tarjeta individual para un color.
-
-        Muestra un cuadro grande coloreado, el nombre del color en negrita
-        y el rango de numeros de historia asociado.
-        """
+    def _crear_card_color(self, parent, nombre, rango, hex_color):
+        """Crea una tarjeta individual para un color."""
         card = ctk.CTkFrame(
-            parent, fg_color=self.COLOR_PANEL,
-            corner_radius=12, border_width=1,
-            border_color=self.COLOR_ENTRY_BORDER,
+            parent, fg_color=self.COLOR_PANEL, corner_radius=10,
+            border_width=1, border_color=self.COLOR_ENTRY_BORDER,
         )
 
         contenido = ctk.CTkFrame(card, fg_color="transparent")
-        contenido.pack(fill="x", padx=20, pady=16)
+        contenido.pack(fill="x", padx=16, pady=12)
 
-        # Cuadro de color grande
+        # Cuadro de color
         cuadro = ctk.CTkFrame(
             contenido, fg_color=hex_color,
-            width=60, height=60,
-            corner_radius=12,
+            width=50, height=50, corner_radius=10,
         )
-        cuadro.pack(side="left", padx=(0, 16))
+        cuadro.pack(side="left", padx=(0, 12))
         cuadro.pack_propagate(False)
 
-        # Info del color (nombre + rango)
-        info_frame = ctk.CTkFrame(contenido, fg_color="transparent")
-        info_frame.pack(side="left", fill="x", expand=True)
+        # Info
+        info = ctk.CTkFrame(contenido, fg_color="transparent")
+        info.pack(side="left", fill="x", expand=True)
 
         ctk.CTkLabel(
-            info_frame,
-            text=nombre,
-            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
-            text_color=self.COLOR_TEXT,
-            anchor="w",
+            info, text=nombre,
+            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
+            text_color=self.COLOR_TEXT, anchor="w",
         ).pack(fill="x")
 
         ctk.CTkLabel(
-            info_frame,
-            text=f"Rango: {rango}",
-            font=ctk.CTkFont(family="Segoe UI", size=13),
-            text_color=self.COLOR_TEXT_SEC,
-            anchor="w",
-        ).pack(fill="x", pady=(2, 0))
+            info, text=f"Rango: {rango}",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color=self.COLOR_TEXT_SEC, anchor="w",
+        ).pack(fill="x", pady=(1, 0))
 
-        # Hex code (info adicional)
         ctk.CTkLabel(
-            info_frame,
-            text=hex_color,
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color=self.COLOR_TEXT_SEC,
-            anchor="w",
-        ).pack(fill="x", pady=(2, 0))
+            info, text=hex_color,
+            font=ctk.CTkFont(family="Segoe UI", size=10),
+            text_color=self.COLOR_TEXT_SEC, anchor="w",
+        ).pack(fill="x", pady=(1, 0))
 
         return card
