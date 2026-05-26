@@ -1,6 +1,8 @@
 import sqlite3
 from models.busqueda import TarjetaSalida
 from dao.conexion import ConexionDB
+from loguru import logger
+from time import time
 
 
 class BusquedaDAO:
@@ -10,14 +12,38 @@ class BusquedaDAO:
         self.db = ConexionDB()
 
     def _ejecutar_consulta(self, query: str, params: tuple = ()) -> list[TarjetaSalida]:
-        """Metodo auxiliar para ejecutar consultas y mapear resultados."""
-        conn = self.db.obtener_conexion()
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute(query, params)
-        filas = cursor.fetchall()
-        conn.close()
-        return [TarjetaSalida(**dict(fila)) for fila in filas]
+        try:
+            """Metodo auxiliar para ejecutar consultas y mapear resultados."""
+            tiempo_inicio = time()
+
+            conn = self.db.obtener_conexion()
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            filas = cursor.fetchall()
+
+            tiempo_final = time()
+
+            tiempo_consulta = tiempo_inicio - tiempo_final
+
+            logger.success(f"""
+                    Consulta exitosa: 
+                    Query: {query}
+                    params: {params}
+                    tiempo: {tiempo_consulta}
+                """
+                )
+
+            return [TarjetaSalida(**dict(fila)) for fila in filas]
+        except:
+            logger.error(f"""
+                    Se produjo un fallo al ejecutar una consulta: 
+                    Query: {query}
+                    params: {params}
+                """
+                )
+        finally:
+            conn.close()
 
     def obtener_todos(self) -> list[TarjetaSalida]:
         """Retorna todos los registros de la vista."""

@@ -1,0 +1,1 @@
+estaba intentando implementar los logs en el dao de forma limpia y que fuese lo menos repetitivo posible
