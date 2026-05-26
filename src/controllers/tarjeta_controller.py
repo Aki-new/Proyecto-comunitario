@@ -145,3 +145,45 @@ class TarjetaController:
         if not eliminado:
             return False, "No se pudo desactivar la tarjeta."
         return True, "Tarjeta desactivada exitosamente."
+
+    def generar_siguiente_num_historia(self) -> str:
+        """Genera el siguiente número de historia de forma secuencial.
+
+        Toma el último num_historia registrado e incrementa el último par.
+        Si el último par llega a 99, se reinicia a 00 e incrementa el par
+        del medio. Si el del medio llega a 99, incrementa el primero.
+
+        Ejemplo:
+            '03-77-34' → '03-77-35'
+            '03-77-99' → '03-78-00'
+            '03-99-99' → '04-00-00'
+
+        Returns:
+            Nuevo número de historia en formato XX-XX-XX.
+            Si no hay registros previos, retorna '00-00-01'.
+        """
+        ultimo = self.tarjeta_dao.obtener_ultimo_num_historia()
+
+        if ultimo is None:
+            return "00-00-01"
+
+        partes = ultimo.split("-")
+        par1 = int(partes[0])
+        par2 = int(partes[1])
+        par3 = int(partes[2])
+
+        # Incrementar el último par
+        par3 += 1
+
+        # Manejar desbordamiento: último → medio → primero
+        if par3 > 99:
+            par3 = 0
+            par2 += 1
+        if par2 > 99:
+            par2 = 0
+            par1 += 1
+        if par1 > 99:
+            par1 = 0  # Reinicio completo
+
+        return f"{par1:02d}-{par2:02d}-{par3:02d}"
+

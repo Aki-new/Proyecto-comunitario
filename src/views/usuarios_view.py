@@ -1,222 +1,252 @@
+"""
+Vista de Gestión de Usuarios — SGI Salud.
+
+Módulo CRUD para administrar los usuarios del sistema.
+Incluye listado en tabla, formulario de creación/edición,
+y sección de cambio de contraseña con verificación.
+
+Componentes principales:
+    - Barra de herramientas con botones Nuevo, Guardar, Eliminar, Limpiar
+    - Tabla de usuarios registrados con filas clicables
+    - Formulario lateral para datos del usuario
+    - Sección de cambio de contraseña (solo visible en modo edición)
+
+Relación con otros módulos:
+    - Usa UsuarioController para CRUD y cambio de clave
+"""
+
 import customtkinter as ctk
 from controllers.usuario_controller import UsuarioController
 
 
 class UsuariosView(ctk.CTkFrame):
-    """Modulo de gestion de usuarios con CRUD completo.
-    Permite listar, crear, actualizar y eliminar usuarios del sistema.
+    """Módulo de gestión de usuarios con CRUD completo.
+
+    Permite listar, crear, actualizar, eliminar usuarios del sistema
+    y cambiar contraseñas con verificación de la clave actual.
+
+    Atributos:
+        controlador:              Instancia de UsuarioController.
+        id_usuario_seleccionado:  ID del usuario cargado en el form (None si nuevo).
+        _widgets_filas_tabla:     Lista de frames de filas renderizadas.
     """
 
-    # -- Paleta de colores -----------------------------------------------------
-    COLOR_BG = "#0F1923"
-    COLOR_PANEL = "#182633"
-    COLOR_ACCENT = "#00A8E8"
-    COLOR_ACCENT_HOVER = "#007BB5"
-    COLOR_TEXT = "#E8EDF2"
-    COLOR_TEXT_SEC = "#8899AA"
-    COLOR_ENTRY_BG = "#1E3044"
-    COLOR_ENTRY_BORDER = "#2A4158"
-    COLOR_ERROR = "#FF4C6A"
-    COLOR_SUCCESS = "#00D68F"
-    COLOR_WARNING = "#FFB800"
-    COLOR_DANGER = "#FF4C6A"
-    COLOR_DANGER_HOVER = "#D93A5A"
-    COLOR_ROW_ALT = "#1A2D3D"
+    # ══════════════════════════════════════════════════════════════════
+    #  CONSTRUCTOR
+    # ══════════════════════════════════════════════════════════════════
 
-    def __init__(self, parent, **kwargs):
+    def __init__(self, parent, tema=None, fuentes=None, **kwargs):
+        """Inicializa la vista de usuarios.
+
+        Args:
+            parent:  Widget padre donde se coloca este frame.
+            tema:    Dict de colores del tema activo.
+            fuentes: Dict de tamaños de fuente activos.
+        """
         super().__init__(parent, fg_color="transparent", **kwargs)
-        self.controller = UsuarioController()
-        self._usuario_seleccionado = None
-        self._filas_widgets: list[ctk.CTkFrame] = []
-        self._crear_widgets()
-        self._cargar_datos()
 
-    # ==========================================================================
-    # Construccion de la interfaz
-    # ==========================================================================
+        # Colores dinámicos
+        t = tema or {}
+        self.COLOR_BG = t.get("fondo", "#0F1923")
+        self.COLOR_PANEL = t.get("panel", "#182633")
+        self.COLOR_ACCENT = t.get("acento", "#00A8E8")
+        self.COLOR_ACCENT_HOVER = t.get("acento_hover", "#007BB5")
+        self.COLOR_TEXT = t.get("texto", "#E8EDF2")
+        self.COLOR_TEXT_SEC = t.get("texto_secundario", "#8899AA")
+        self.COLOR_ENTRY_BG = t.get("entrada_fondo", "#1E3044")
+        self.COLOR_ENTRY_BORDER = t.get("entrada_borde", "#2A4158")
+        self.COLOR_ERROR = t.get("error", "#FF4C6A")
+        self.COLOR_SUCCESS = t.get("exito", "#00D68F")
+        self.COLOR_WARNING = "#FFB800"
+        self.COLOR_DANGER = t.get("peligro", "#FF4C6A")
+        self.COLOR_DANGER_HOVER = t.get("peligro_hover", "#D93A5A")
+        self.COLOR_ROW_ALT = t.get("fila_alterna", "#1A2D3D")
 
-    def _crear_widgets(self):
+        self.controlador = UsuarioController()
+        self.id_usuario_seleccionado: int | None = None
+        self._widgets_filas_tabla: list[ctk.CTkFrame] = []
+        self._construir_interfaz()
+        self._cargar_datos_tabla()
+
+    # ══════════════════════════════════════════════════════════════════
+    #  CONSTRUCCIÓN DE LA INTERFAZ
+    # ══════════════════════════════════════════════════════════════════
+
+    def _construir_interfaz(self):
         """Construye la barra de herramientas, la tabla y el formulario."""
 
-        # -- Barra de herramientas ---------------------------------------------
-        self._crear_toolbar()
+        # ── Barra de herramientas ──
+        self._construir_barra_herramientas()
 
-        # -- Mensaje de retroalimentacion --------------------------------------
-        self.label_mensaje = ctk.CTkLabel(
+        # ── Mensaje de retroalimentación ──
+        self.etiqueta_mensaje = ctk.CTkLabel(
             self, text="",
             font=ctk.CTkFont(family="Segoe UI", size=12),
-            text_color=self.COLOR_SUCCESS,
-            anchor="w",
+            text_color=self.COLOR_SUCCESS, anchor="w",
         )
-        self.label_mensaje.pack(fill="x", padx=4, pady=(0, 6))
+        self.etiqueta_mensaje.pack(fill="x", padx=4, pady=(0, 6))
 
-        # -- Contenedor principal (tabla + formulario) -------------------------
-        contenedor = ctk.CTkFrame(self, fg_color="transparent")
-        contenedor.pack(fill="both", expand=True)
-        contenedor.grid_columnconfigure(0, weight=65)
-        contenedor.grid_columnconfigure(1, weight=35)
-        contenedor.grid_rowconfigure(0, weight=1)
+        # ── Contenedor principal (tabla izquierda + formulario derecho) ──
+        contenedor_principal = ctk.CTkFrame(self, fg_color="transparent")
+        contenedor_principal.pack(fill="both", expand=True)
+        contenedor_principal.grid_columnconfigure(0, weight=65)
+        contenedor_principal.grid_columnconfigure(1, weight=35)
+        contenedor_principal.grid_rowconfigure(0, weight=1)
 
-        # Panel izquierdo: tabla
-        self._crear_tabla(contenedor)
+        self._construir_tabla(contenedor_principal)
+        self._construir_formulario(contenedor_principal)
 
-        # Panel derecho: formulario
-        self._crear_formulario(contenedor)
+    # ── BARRA DE HERRAMIENTAS ─────────────────────────────────────────
 
-    # --------------------------------------------------------------------------
-    # Toolbar
-    # --------------------------------------------------------------------------
-
-    def _crear_toolbar(self):
-        """Barra superior con botones de accion."""
-        toolbar = ctk.CTkFrame(
+    def _construir_barra_herramientas(self):
+        """Barra superior con botones de acción: Nuevo, Guardar, Eliminar, Limpiar."""
+        barra = ctk.CTkFrame(
             self, fg_color=self.COLOR_PANEL,
             corner_radius=12, border_width=1,
             border_color=self.COLOR_ENTRY_BORDER,
         )
-        toolbar.pack(fill="x", pady=(0, 10))
+        barra.pack(fill="x", pady=(0, 10))
 
-        contenedor = ctk.CTkFrame(toolbar, fg_color="transparent")
-        contenedor.pack(fill="x", padx=12, pady=10)
+        contenedor_botones = ctk.CTkFrame(barra, fg_color="transparent")
+        contenedor_botones.pack(fill="x", padx=12, pady=10)
 
-        btn_config = {
+        estilo_boton = {
             "height": 34, "corner_radius": 8,
             "font": ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
         }
 
-        self.btn_nuevo = ctk.CTkButton(
-            contenedor, text="Nuevo",
+        ctk.CTkButton(
+            contenedor_botones, text="Nuevo",
             fg_color=self.COLOR_ACCENT,
             hover_color=self.COLOR_ACCENT_HOVER,
             text_color="#FFFFFF",
-            command=self._accion_nuevo,
-            **btn_config,
-        )
-        self.btn_nuevo.pack(side="left", padx=(0, 6))
+            command=self._nuevo_usuario, **estilo_boton,
+        ).pack(side="left", padx=(0, 6))
 
-        self.btn_guardar = ctk.CTkButton(
-            contenedor, text="Guardar",
-            fg_color=self.COLOR_SUCCESS,
-            hover_color="#00B377",
+        ctk.CTkButton(
+            contenedor_botones, text="Guardar",
+            fg_color=self.COLOR_SUCCESS, hover_color="#00B377",
             text_color="#FFFFFF",
-            command=self._accion_guardar,
-            **btn_config,
-        )
-        self.btn_guardar.pack(side="left", padx=(0, 6))
+            command=self._guardar_usuario, **estilo_boton,
+        ).pack(side="left", padx=(0, 6))
 
-        self.btn_eliminar = ctk.CTkButton(
-            contenedor, text="Eliminar",
+        ctk.CTkButton(
+            contenedor_botones, text="Eliminar",
             fg_color=self.COLOR_DANGER,
             hover_color=self.COLOR_DANGER_HOVER,
             text_color="#FFFFFF",
-            command=self._accion_eliminar,
-            **btn_config,
-        )
-        self.btn_eliminar.pack(side="left", padx=(0, 6))
+            command=self._eliminar_usuario, **estilo_boton,
+        ).pack(side="left", padx=(0, 6))
 
-        self.btn_limpiar = ctk.CTkButton(
-            contenedor, text="Limpiar",
+        ctk.CTkButton(
+            contenedor_botones, text="Limpiar",
             fg_color=self.COLOR_ENTRY_BG,
             hover_color=self.COLOR_ENTRY_BORDER,
             text_color=self.COLOR_TEXT,
-            command=self._accion_limpiar,
-            **btn_config,
-        )
-        self.btn_limpiar.pack(side="left")
+            command=self._limpiar_formulario, **estilo_boton,
+        ).pack(side="left")
 
-    # --------------------------------------------------------------------------
-    # Tabla (panel izquierdo)
-    # --------------------------------------------------------------------------
+    # ── TABLA ─────────────────────────────────────────────────────────
 
-    def _crear_tabla(self, parent):
-        """Tabla de usuarios con scroll."""
-        tabla_panel = ctk.CTkFrame(
+    def _construir_tabla(self, parent):
+        """Construye el panel izquierdo con la tabla de usuarios.
+
+        Args:
+            parent: Widget contenedor principal.
+        """
+        panel_tabla = ctk.CTkFrame(
             parent, fg_color=self.COLOR_PANEL,
             corner_radius=12, border_width=1,
             border_color=self.COLOR_ENTRY_BORDER,
         )
-        tabla_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        panel_tabla.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
 
-        # Titulo del panel
         ctk.CTkLabel(
-            tabla_panel,
-            text="Usuarios Registrados",
+            panel_tabla, text="Usuarios Registrados",
             font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
-            text_color=self.COLOR_TEXT,
-            anchor="w",
+            text_color=self.COLOR_TEXT, anchor="w",
         ).pack(fill="x", padx=16, pady=(12, 6))
 
-        # Cabecera
-        self._crear_cabecera_tabla(tabla_panel)
+        # Cabecera de la tabla
+        self._construir_cabecera_tabla(panel_tabla)
 
-        # Area de scroll para las filas
+        # Área scrollable para las filas de datos
         self.scroll_tabla = ctk.CTkScrollableFrame(
-            tabla_panel, fg_color="transparent",
+            panel_tabla, fg_color="transparent",
             scrollbar_button_color=self.COLOR_ENTRY_BG,
             scrollbar_button_hover_color=self.COLOR_ACCENT,
         )
         self.scroll_tabla.pack(fill="both", expand=True, padx=4, pady=(0, 4))
 
-        for i, peso in enumerate(self._col_pesos()):
-            self.scroll_tabla.grid_columnconfigure(i, weight=peso)
+        nombres_columnas = ["Cedula", "Nombre Completo", "Usuario"]
+        pesos_columnas = [1, 2, 1]
+        for indice, peso in enumerate(pesos_columnas):
+            self.scroll_tabla.grid_columnconfigure(indice, weight=peso)
 
-    @staticmethod
-    def _col_nombres():
-        return ["Cedula", "Nombre Completo", "Usuario"]
+    def _construir_cabecera_tabla(self, parent):
+        """Dibuja la fila de cabecera con los nombres de columna.
 
-    @staticmethod
-    def _col_pesos():
-        return [1, 2, 1]
+        Args:
+            parent: Panel de la tabla.
+        """
+        cabecera = ctk.CTkFrame(
+            parent, fg_color=self.COLOR_ENTRY_BG,
+            height=36, corner_radius=0,
+        )
+        cabecera.pack(fill="x", padx=4, pady=(0, 0))
+        cabecera.pack_propagate(False)
 
-    def _crear_cabecera_tabla(self, parent):
-        """Dibuja la fila de cabecera."""
-        header = ctk.CTkFrame(parent, fg_color=self.COLOR_ENTRY_BG, height=36, corner_radius=0)
-        header.pack(fill="x", padx=4, pady=(0, 0))
-        header.pack_propagate(False)
+        nombres_columnas = ["Cedula", "Nombre Completo", "Usuario"]
+        pesos_columnas = [1, 2, 1]
 
-        for i, (nombre, peso) in enumerate(
-            zip(self._col_nombres(), self._col_pesos())
+        for indice, (nombre, peso) in enumerate(
+            zip(nombres_columnas, pesos_columnas)
         ):
-            header.grid_columnconfigure(i, weight=peso)
+            cabecera.grid_columnconfigure(indice, weight=peso)
             ctk.CTkLabel(
-                header, text=nombre,
+                cabecera, text=nombre,
                 font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                text_color=self.COLOR_TEXT,
-                anchor="w",
-            ).grid(row=0, column=i, sticky="ew", padx=10, pady=6)
+                text_color=self.COLOR_TEXT, anchor="w",
+            ).grid(row=0, column=indice, sticky="ew", padx=10, pady=6)
 
-    # --------------------------------------------------------------------------
-    # Formulario (panel derecho)
-    # --------------------------------------------------------------------------
+    # ── FORMULARIO ────────────────────────────────────────────────────
 
-    def _crear_formulario(self, parent):
-        """Panel de formulario para crear/editar usuarios."""
-        form_panel = ctk.CTkFrame(
+    def _construir_formulario(self, parent):
+        """Construye el panel derecho con el formulario de usuario.
+
+        Incluye campos para nombre, apellido, cédula, usuario y clave,
+        más una sección de cambio de contraseña (solo visible al editar).
+
+        Args:
+            parent: Widget contenedor principal.
+        """
+        panel_formulario = ctk.CTkFrame(
             parent, fg_color=self.COLOR_PANEL,
             corner_radius=12, border_width=1,
             border_color=self.COLOR_ENTRY_BORDER,
         )
-        form_panel.grid(row=0, column=1, sticky="nsew")
+        panel_formulario.grid(row=0, column=1, sticky="nsew")
 
-        # Titulo
         ctk.CTkLabel(
-            form_panel,
-            text="Datos del Usuario",
+            panel_formulario, text="Datos del Usuario",
             font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
-            text_color=self.COLOR_TEXT,
-            anchor="w",
+            text_color=self.COLOR_TEXT, anchor="w",
         ).pack(fill="x", padx=16, pady=(16, 12))
 
-        # Separador
         ctk.CTkFrame(
-            form_panel, fg_color=self.COLOR_ENTRY_BORDER, height=1,
+            panel_formulario, fg_color=self.COLOR_ENTRY_BORDER, height=1,
         ).pack(fill="x", padx=16, pady=(0, 12))
 
-        # Contenedor de campos
-        campos_frame = ctk.CTkFrame(form_panel, fg_color="transparent")
-        campos_frame.pack(fill="x", padx=16)
+        # Área scrollable para todos los campos
+        scroll_form = ctk.CTkScrollableFrame(
+            panel_formulario, fg_color="transparent",
+            scrollbar_button_color=self.COLOR_ENTRY_BG,
+            scrollbar_button_hover_color=self.COLOR_ENTRY_BORDER,
+        )
+        scroll_form.pack(fill="both", expand=True, padx=8, pady=(0, 8))
 
-        entry_cfg = {
+        # Estilos reutilizables
+        estilo_entrada = {
             "height": 38, "corner_radius": 8,
             "font": ctk.CTkFont(family="Segoe UI", size=13),
             "fg_color": self.COLOR_ENTRY_BG,
@@ -224,253 +254,372 @@ class UsuariosView(ctk.CTkFrame):
             "text_color": self.COLOR_TEXT,
             "placeholder_text_color": self.COLOR_TEXT_SEC,
         }
-
-        label_cfg = {
+        estilo_etiqueta = {
             "font": ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            "text_color": self.COLOR_TEXT_SEC,
-            "anchor": "w",
+            "text_color": self.COLOR_TEXT_SEC, "anchor": "w",
         }
 
-        # Nombre
-        ctk.CTkLabel(campos_frame, text="Nombre", **label_cfg).pack(
-            fill="x", pady=(0, 4))
-        self.entry_nombre = ctk.CTkEntry(
-            campos_frame, placeholder_text="Nombre del usuario", **entry_cfg)
-        self.entry_nombre.pack(fill="x", pady=(0, 10))
-
-        # Apellido
-        ctk.CTkLabel(campos_frame, text="Apellido", **label_cfg).pack(
-            fill="x", pady=(0, 4))
-        self.entry_apellido = ctk.CTkEntry(
-            campos_frame, placeholder_text="Apellido del usuario", **entry_cfg)
-        self.entry_apellido.pack(fill="x", pady=(0, 10))
-
-        # Cedula
-        ctk.CTkLabel(campos_frame, text="Cedula", **label_cfg).pack(
-            fill="x", pady=(0, 4))
-        self.entry_cedula = ctk.CTkEntry(
-            campos_frame, placeholder_text="Cedula (solo numeros)", **entry_cfg)
-        self.entry_cedula.pack(fill="x", pady=(0, 10))
-
-        # Usuario
-        ctk.CTkLabel(campos_frame, text="Usuario", **label_cfg).pack(
-            fill="x", pady=(0, 4))
-        self.entry_usuario = ctk.CTkEntry(
-            campos_frame, placeholder_text="Nombre de usuario", **entry_cfg)
-        self.entry_usuario.pack(fill="x", pady=(0, 10))
-
-        # Clave
-        ctk.CTkLabel(campos_frame, text="Clave", **label_cfg).pack(
-            fill="x", pady=(0, 4))
-        self.entry_clave = ctk.CTkEntry(
-            campos_frame, placeholder_text="Clave de acceso",
-            show="*", **entry_cfg)
-        self.entry_clave.pack(fill="x", pady=(0, 10))
-
-        # Label de validacion del formulario
-        self.label_form_error = ctk.CTkLabel(
-            form_panel, text="",
-            font=ctk.CTkFont(family="Segoe UI", size=11),
-            text_color=self.COLOR_ERROR,
-            anchor="w",
-            wraplength=280,
+        # ── Campos principales del usuario ──
+        ctk.CTkLabel(
+            scroll_form, text="Nombre", **estilo_etiqueta
+        ).pack(fill="x", padx=8, pady=(0, 4))
+        self.entrada_nombre = ctk.CTkEntry(
+            scroll_form, placeholder_text="Nombre del usuario", **estilo_entrada
         )
-        self.label_form_error.pack(fill="x", padx=16, pady=(4, 4))
+        self.entrada_nombre.pack(fill="x", padx=8, pady=(0, 10))
 
-    # ==========================================================================
-    # Carga de datos
-    # ==========================================================================
+        ctk.CTkLabel(
+            scroll_form, text="Apellido", **estilo_etiqueta
+        ).pack(fill="x", padx=8, pady=(0, 4))
+        self.entrada_apellido = ctk.CTkEntry(
+            scroll_form, placeholder_text="Apellido del usuario", **estilo_entrada
+        )
+        self.entrada_apellido.pack(fill="x", padx=8, pady=(0, 10))
 
-    def _cargar_datos(self):
-        """Carga la lista de usuarios desde el controlador."""
+        ctk.CTkLabel(
+            scroll_form, text="Cedula", **estilo_etiqueta
+        ).pack(fill="x", padx=8, pady=(0, 4))
+        self.entrada_cedula = ctk.CTkEntry(
+            scroll_form, placeholder_text="Cedula (solo numeros)", **estilo_entrada
+        )
+        self.entrada_cedula.pack(fill="x", padx=8, pady=(0, 10))
+
+        ctk.CTkLabel(
+            scroll_form, text="Usuario", **estilo_etiqueta
+        ).pack(fill="x", padx=8, pady=(0, 4))
+        self.entrada_usuario = ctk.CTkEntry(
+            scroll_form, placeholder_text="Nombre de usuario", **estilo_entrada
+        )
+        self.entrada_usuario.pack(fill="x", padx=8, pady=(0, 10))
+
+        ctk.CTkLabel(
+            scroll_form, text="Clave (registro)", **estilo_etiqueta
+        ).pack(fill="x", padx=8, pady=(0, 4))
+        self.entrada_clave = ctk.CTkEntry(
+            scroll_form, placeholder_text="Clave de acceso",
+            show="*", **estilo_entrada,
+        )
+        self.entrada_clave.pack(fill="x", padx=8, pady=(0, 10))
+
+        # ── Etiqueta de errores de validación ──
+        self.etiqueta_errores_formulario = ctk.CTkLabel(
+            scroll_form, text="",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=self.COLOR_ERROR, anchor="w", wraplength=280,
+        )
+        self.etiqueta_errores_formulario.pack(fill="x", padx=8, pady=(4, 4))
+
+        # ══════════════════════════════════════════════════════════════
+        #  SECCIÓN: CAMBIAR CONTRASEÑA
+        #  Solo visible cuando se selecciona un usuario existente.
+        # ══════════════════════════════════════════════════════════════
+        self.seccion_cambio_clave = ctk.CTkFrame(
+            scroll_form, fg_color="transparent"
+        )
+        # NO se empaqueta aquí — se muestra/oculta dinámicamente
+
+        ctk.CTkFrame(
+            self.seccion_cambio_clave,
+            fg_color=self.COLOR_ENTRY_BORDER, height=1,
+        ).pack(fill="x", padx=0, pady=(8, 12))
+
+        ctk.CTkLabel(
+            self.seccion_cambio_clave, text="CAMBIAR CONTRASEÑA",
+            font=ctk.CTkFont(family="Segoe UI", size=9, weight="bold"),
+            text_color=self.COLOR_ACCENT, anchor="w",
+        ).pack(fill="x", padx=8, pady=(0, 8))
+
+        ctk.CTkLabel(
+            self.seccion_cambio_clave, text="Contraseña Actual",
+            **estilo_etiqueta,
+        ).pack(fill="x", padx=8, pady=(0, 4))
+        self.entrada_clave_actual = ctk.CTkEntry(
+            self.seccion_cambio_clave,
+            placeholder_text="Ingrese la contraseña actual",
+            show="*", **estilo_entrada,
+        )
+        self.entrada_clave_actual.pack(fill="x", padx=8, pady=(0, 10))
+
+        ctk.CTkLabel(
+            self.seccion_cambio_clave, text="Nueva Contraseña",
+            **estilo_etiqueta,
+        ).pack(fill="x", padx=8, pady=(0, 4))
+        self.entrada_clave_nueva = ctk.CTkEntry(
+            self.seccion_cambio_clave,
+            placeholder_text="Minimo 4 caracteres",
+            show="*", **estilo_entrada,
+        )
+        self.entrada_clave_nueva.pack(fill="x", padx=8, pady=(0, 10))
+
+        ctk.CTkLabel(
+            self.seccion_cambio_clave, text="Confirmar Nueva Contraseña",
+            **estilo_etiqueta,
+        ).pack(fill="x", padx=8, pady=(0, 4))
+        self.entrada_clave_confirmacion = ctk.CTkEntry(
+            self.seccion_cambio_clave,
+            placeholder_text="Repita la nueva contraseña",
+            show="*", **estilo_entrada,
+        )
+        self.entrada_clave_confirmacion.pack(fill="x", padx=8, pady=(0, 10))
+
+        ctk.CTkButton(
+            self.seccion_cambio_clave, text="🔒 Cambiar Contraseña",
+            height=34, corner_radius=8,
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            fg_color=self.COLOR_WARNING, hover_color="#E0A500",
+            text_color="#1A1A2E", command=self._cambiar_clave,
+        ).pack(fill="x", padx=8, pady=(0, 8))
+
+        self.etiqueta_mensaje_clave = ctk.CTkLabel(
+            self.seccion_cambio_clave, text="",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=self.COLOR_SUCCESS, anchor="w", wraplength=280,
+        )
+        self.etiqueta_mensaje_clave.pack(fill="x", padx=8, pady=(0, 4))
+
+    # ══════════════════════════════════════════════════════════════════
+    #  CARGA DE DATOS
+    # ══════════════════════════════════════════════════════════════════
+
+    def _cargar_datos_tabla(self):
+        """Obtiene la lista de usuarios desde el controlador y renderiza la tabla."""
         try:
-            usuarios = self.controller.listar_usuarios()
+            usuarios = self.controlador.listar_usuarios()
             self._renderizar_tabla(usuarios)
-        except Exception as e:
-            self._mostrar_mensaje(f"Error al cargar usuarios: {e}", error=True)
+        except Exception as error:
+            self._mostrar_mensaje(f"Error al cargar usuarios: {error}", es_error=True)
 
     def _renderizar_tabla(self, usuarios):
-        """Limpia y redibuja las filas de la tabla."""
-        for widget in self._filas_widgets:
-            widget.destroy()
-        self._filas_widgets.clear()
+        """Limpia y redibuja las filas de la tabla con los usuarios dados.
+
+        Args:
+            usuarios: Lista de objetos Usuario a mostrar.
+        """
+        for widget_fila in self._widgets_filas_tabla:
+            widget_fila.destroy()
+        self._widgets_filas_tabla.clear()
 
         if not usuarios:
-            placeholder = ctk.CTkFrame(self.scroll_tabla, fg_color="transparent")
-            placeholder.grid(row=0, column=0, columnspan=3, pady=40, sticky="ew")
+            marco_vacio = ctk.CTkFrame(self.scroll_tabla, fg_color="transparent")
+            marco_vacio.grid(row=0, column=0, columnspan=3, pady=40, sticky="ew")
             ctk.CTkLabel(
-                placeholder,
-                text="No hay usuarios registrados.",
+                marco_vacio, text="No hay usuarios registrados.",
                 font=ctk.CTkFont(family="Segoe UI", size=13),
                 text_color=self.COLOR_TEXT_SEC,
             ).pack()
-            self._filas_widgets.append(placeholder)
+            self._widgets_filas_tabla.append(marco_vacio)
             return
 
-        for idx, usuario in enumerate(usuarios):
-            bg = self.COLOR_ROW_ALT if idx % 2 == 0 else "transparent"
-            fila = ctk.CTkFrame(
-                self.scroll_tabla, fg_color=bg,
+        pesos_columnas = [1, 2, 1]
+
+        for indice, usuario in enumerate(usuarios):
+            color_fila = self.COLOR_ROW_ALT if indice % 2 == 0 else "transparent"
+            marco_fila = ctk.CTkFrame(
+                self.scroll_tabla, fg_color=color_fila,
                 height=36, corner_radius=0,
             )
-            fila.grid(row=idx, column=0, columnspan=3, sticky="ew")
-            fila.grid_propagate(False)
+            marco_fila.grid(row=indice, column=0, columnspan=3, sticky="ew")
+            marco_fila.grid_propagate(False)
 
-            for j, peso in enumerate(self._col_pesos()):
-                fila.grid_columnconfigure(j, weight=peso)
+            for indice_col, peso in enumerate(pesos_columnas):
+                marco_fila.grid_columnconfigure(indice_col, weight=peso)
 
             nombre_completo = f"{usuario.nombre} {usuario.apellido}"
+            valores = [str(usuario.cedula), nombre_completo, usuario.usuario]
 
-            valores = [
-                str(usuario.cedula),
-                nombre_completo,
-                usuario.usuario,
-            ]
-
-            for j, val in enumerate(valores):
-                ctk.CTkLabel(
-                    fila, text=val,
+            for indice_col, valor in enumerate(valores):
+                etiqueta = ctk.CTkLabel(
+                    marco_fila, text=valor,
                     font=ctk.CTkFont(family="Segoe UI", size=12),
-                    text_color=self.COLOR_TEXT,
-                    anchor="w",
-                ).grid(row=0, column=j, sticky="ew", padx=10, pady=6)
+                    text_color=self.COLOR_TEXT, anchor="w",
+                )
+                etiqueta.grid(
+                    row=0, column=indice_col, sticky="ew", padx=10, pady=6
+                )
+                etiqueta.bind(
+                    "<Button-1>",
+                    lambda _, u=usuario: self._seleccionar_usuario(u),
+                )
 
-            # Bind click para seleccionar fila
-            fila.bind("<Button-1>", lambda e, u=usuario: self._seleccionar_usuario(u))
-            for child in fila.winfo_children():
-                child.bind("<Button-1>", lambda e, u=usuario: self._seleccionar_usuario(u))
+            marco_fila.bind(
+                "<Button-1>",
+                lambda _, u=usuario: self._seleccionar_usuario(u),
+            )
+            self._widgets_filas_tabla.append(marco_fila)
 
-            self._filas_widgets.append(fila)
-
-    # ==========================================================================
-    # Seleccion y llenado del formulario
-    # ==========================================================================
+    # ══════════════════════════════════════════════════════════════════
+    #  SELECCIÓN DE USUARIO
+    # ══════════════════════════════════════════════════════════════════
 
     def _seleccionar_usuario(self, usuario):
-        """Carga los datos del usuario seleccionado en el formulario."""
-        self._usuario_seleccionado = usuario
-        self.label_form_error.configure(text="")
+        """Carga los datos del usuario seleccionado en el formulario.
 
-        self._set_entry(self.entry_nombre, usuario.nombre)
-        self._set_entry(self.entry_apellido, usuario.apellido)
-        self._set_entry(self.entry_cedula, str(usuario.cedula))
-        self._set_entry(self.entry_usuario, usuario.usuario)
-        self.entry_clave.delete(0, "end")
+        Muestra la sección de cambio de contraseña (solo en modo edición).
 
-    @staticmethod
-    def _set_entry(entry, valor: str):
-        """Limpia y escribe un valor en un CTkEntry."""
-        entry.delete(0, "end")
-        entry.insert(0, valor)
+        Args:
+            usuario: Objeto Usuario seleccionado de la tabla.
+        """
+        self.id_usuario_seleccionado = usuario.id
+        self.etiqueta_errores_formulario.configure(text="")
 
-    # ==========================================================================
-    # Acciones CRUD
-    # ==========================================================================
+        self._establecer_texto_entrada(self.entrada_nombre, usuario.nombre)
+        self._establecer_texto_entrada(self.entrada_apellido, usuario.apellido)
+        self._establecer_texto_entrada(self.entrada_cedula, str(usuario.cedula))
+        self._establecer_texto_entrada(self.entrada_usuario, usuario.usuario)
+        self.entrada_clave.delete(0, "end")
 
-    def _accion_nuevo(self):
-        """Limpia el formulario para registrar un nuevo usuario."""
-        self._usuario_seleccionado = None
+        # Mostrar sección de cambio de contraseña
+        self.seccion_cambio_clave.pack(fill="x")
+        self.etiqueta_mensaje_clave.configure(text="")
+
+    # ══════════════════════════════════════════════════════════════════
+    #  ACCIONES CRUD
+    # ══════════════════════════════════════════════════════════════════
+
+    def _nuevo_usuario(self):
+        """Prepara el formulario para registrar un nuevo usuario.
+
+        Limpia todos los campos y oculta la sección de cambio de contraseña.
+        """
+        self.id_usuario_seleccionado = None
         self._limpiar_formulario()
-        self._mostrar_mensaje("Complete los campos para registrar un nuevo usuario.", error=False)
-        self.entry_nombre.focus_set()
+        self._mostrar_mensaje(
+            "Complete los campos para registrar un nuevo usuario.", es_error=False
+        )
+        self.entrada_nombre.focus_set()
 
-    def _accion_guardar(self):
-        """Registra o actualiza un usuario segun el estado del formulario."""
+    def _guardar_usuario(self):
+        """Registra o actualiza un usuario según el estado del formulario.
+
+        Si id_usuario_seleccionado es None, crea un nuevo usuario.
+        Si tiene valor, actualiza el usuario existente.
+        """
         datos = self._obtener_datos_formulario()
         if datos is None:
             return
 
-        if self._usuario_seleccionado is None:
-            # Crear nuevo usuario
-            exito, mensaje = self.controller.registrar_usuario(datos)
+        if self.id_usuario_seleccionado is None:
+            exito, mensaje = self.controlador.registrar_usuario(datos)
         else:
-            # Actualizar usuario existente
-            exito, mensaje = self.controller.actualizar_usuario(
-                self._usuario_seleccionado.id, datos
+            exito, mensaje = self.controlador.actualizar_usuario(
+                self.id_usuario_seleccionado, datos
             )
 
         if exito:
-            self._mostrar_mensaje(mensaje, error=False)
+            self._mostrar_mensaje(mensaje, es_error=False)
             self._limpiar_formulario()
-            self._usuario_seleccionado = None
-            self._cargar_datos()
+            self.id_usuario_seleccionado = None
+            self._cargar_datos_tabla()
         else:
-            self._mostrar_mensaje(mensaje, error=True)
+            self._mostrar_mensaje(mensaje, es_error=True)
 
-    def _accion_eliminar(self):
-        """Elimina (desactiva) el usuario seleccionado."""
-        if self._usuario_seleccionado is None:
+    def _eliminar_usuario(self):
+        """Desactiva (borrado lógico) el usuario seleccionado."""
+        if self.id_usuario_seleccionado is None:
             self._mostrar_mensaje(
-                "Seleccione un usuario de la tabla para eliminar.", error=True
+                "Seleccione un usuario de la tabla para eliminar.", es_error=True
             )
             return
 
-        exito, mensaje = self.controller.eliminar_usuario(
-            self._usuario_seleccionado.id
+        exito, mensaje = self.controlador.eliminar_usuario(
+            self.id_usuario_seleccionado
         )
 
         if exito:
-            self._mostrar_mensaje(mensaje, error=False)
+            self._mostrar_mensaje(mensaje, es_error=False)
             self._limpiar_formulario()
-            self._usuario_seleccionado = None
-            self._cargar_datos()
+            self.id_usuario_seleccionado = None
+            self._cargar_datos_tabla()
         else:
-            self._mostrar_mensaje(mensaje, error=True)
+            self._mostrar_mensaje(mensaje, es_error=True)
 
-    def _accion_limpiar(self):
-        """Limpia el formulario y la seleccion."""
-        self._usuario_seleccionado = None
-        self._limpiar_formulario()
-        self.label_mensaje.configure(text="")
-        self.label_form_error.configure(text="")
+    # ══════════════════════════════════════════════════════════════════
+    #  CAMBIO DE CONTRASEÑA
+    # ══════════════════════════════════════════════════════════════════
 
-    # ==========================================================================
-    # Utilidades de formulario
-    # ==========================================================================
+    def _cambiar_clave(self):
+        """Cambia la contraseña del usuario seleccionado.
+
+        Valida que se haya seleccionado un usuario, luego delega
+        la verificación y cambio al controlador (que verifica la
+        contraseña actual, longitud mínima, y coincidencia).
+        """
+        if self.id_usuario_seleccionado is None:
+            self.etiqueta_mensaje_clave.configure(
+                text="Seleccione un usuario primero.",
+                text_color=self.COLOR_ERROR,
+            )
+            return
+
+        clave_actual = self.entrada_clave_actual.get()
+        clave_nueva = self.entrada_clave_nueva.get()
+        clave_confirmacion = self.entrada_clave_confirmacion.get()
+
+        exito, mensaje = self.controlador.cambiar_clave(
+            self.id_usuario_seleccionado,
+            clave_actual,
+            clave_nueva,
+            clave_confirmacion,
+        )
+
+        color = self.COLOR_SUCCESS if exito else self.COLOR_ERROR
+        self.etiqueta_mensaje_clave.configure(text=mensaje, text_color=color)
+
+        if exito:
+            self.entrada_clave_actual.delete(0, "end")
+            self.entrada_clave_nueva.delete(0, "end")
+            self.entrada_clave_confirmacion.delete(0, "end")
+
+    # ══════════════════════════════════════════════════════════════════
+    #  UTILIDADES
+    # ══════════════════════════════════════════════════════════════════
 
     def _obtener_datos_formulario(self) -> dict | None:
-        """Lee los campos del formulario y valida que no esten vacios.
+        """Lee los campos del formulario y valida que no estén vacíos.
+
+        Verifica que todos los campos obligatorios tengan valor y que
+        la cédula sea numérica.
 
         Returns:
-            Diccionario con los datos o None si hay errores.
+            Diccionario con los datos del usuario o None si hay errores.
         """
-        nombre = self.entry_nombre.get().strip()
-        apellido = self.entry_apellido.get().strip()
-        cedula_txt = self.entry_cedula.get().strip()
-        usuario = self.entry_usuario.get().strip()
-        clave = self.entry_clave.get().strip()
+        nombre = self.entrada_nombre.get().strip()
+        apellido = self.entrada_apellido.get().strip()
+        cedula_texto = self.entrada_cedula.get().strip()
+        usuario = self.entrada_usuario.get().strip()
+        clave = self.entrada_clave.get().strip()
 
         # Validar campos obligatorios
-        vacios = []
+        campos_vacios = []
         if not nombre:
-            vacios.append("Nombre")
+            campos_vacios.append("Nombre")
         if not apellido:
-            vacios.append("Apellido")
-        if not cedula_txt:
-            vacios.append("Cedula")
+            campos_vacios.append("Apellido")
+        if not cedula_texto:
+            campos_vacios.append("Cedula")
         if not usuario:
-            vacios.append("Usuario")
+            campos_vacios.append("Usuario")
         if not clave:
-            vacios.append("Clave")
+            campos_vacios.append("Clave")
 
-        if vacios:
-            self.label_form_error.configure(
-                text=f"Campos requeridos: {', '.join(vacios)}",
+        if campos_vacios:
+            self.etiqueta_errores_formulario.configure(
+                text=f"Campos requeridos: {', '.join(campos_vacios)}",
                 text_color=self.COLOR_ERROR,
             )
             return None
 
-        # Validar cedula numerica
+        # Validar que la cédula sea numérica
         try:
-            cedula = int(cedula_txt)
+            cedula = int(cedula_texto)
         except ValueError:
-            self.label_form_error.configure(
+            self.etiqueta_errores_formulario.configure(
                 text="La cedula debe contener solo numeros.",
                 text_color=self.COLOR_ERROR,
             )
             return None
 
-        self.label_form_error.configure(text="")
+        self.etiqueta_errores_formulario.configure(text="")
 
         return {
             "nombre": nombre,
@@ -481,15 +630,42 @@ class UsuariosView(ctk.CTkFrame):
         }
 
     def _limpiar_formulario(self):
-        """Limpia todos los campos del formulario."""
-        self.entry_nombre.delete(0, "end")
-        self.entry_apellido.delete(0, "end")
-        self.entry_cedula.delete(0, "end")
-        self.entry_usuario.delete(0, "end")
-        self.entry_clave.delete(0, "end")
-        self.label_form_error.configure(text="")
+        """Resetea todos los campos del formulario y oculta cambio de clave.
 
-    def _mostrar_mensaje(self, mensaje: str, error: bool = False):
-        """Muestra un mensaje en el label de retroalimentacion."""
-        color = self.COLOR_ERROR if error else self.COLOR_SUCCESS
-        self.label_mensaje.configure(text=mensaje, text_color=color)
+        Limpia los entries principales, las entries de cambio de contraseña,
+        y oculta la sección de cambio de clave.
+        """
+        self.entrada_nombre.delete(0, "end")
+        self.entrada_apellido.delete(0, "end")
+        self.entrada_cedula.delete(0, "end")
+        self.entrada_usuario.delete(0, "end")
+        self.entrada_clave.delete(0, "end")
+        self.etiqueta_errores_formulario.configure(text="")
+
+        # Limpiar y ocultar sección de cambio de contraseña
+        self.entrada_clave_actual.delete(0, "end")
+        self.entrada_clave_nueva.delete(0, "end")
+        self.entrada_clave_confirmacion.delete(0, "end")
+        self.etiqueta_mensaje_clave.configure(text="")
+        self.seccion_cambio_clave.pack_forget()
+
+    @staticmethod
+    def _establecer_texto_entrada(entrada, valor: str):
+        """Limpia un CTkEntry y establece un nuevo valor.
+
+        Args:
+            entrada: Widget CTkEntry a modificar.
+            valor: Texto a colocar en el entry.
+        """
+        entrada.delete(0, "end")
+        entrada.insert(0, valor)
+
+    def _mostrar_mensaje(self, mensaje: str, es_error: bool = False):
+        """Muestra un mensaje en la etiqueta de retroalimentación.
+
+        Args:
+            mensaje: Texto del mensaje.
+            es_error: True para color rojo, False para color verde.
+        """
+        color = self.COLOR_ERROR if es_error else self.COLOR_SUCCESS
+        self.etiqueta_mensaje.configure(text=mensaje, text_color=color)

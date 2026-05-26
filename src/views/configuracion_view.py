@@ -1,0 +1,413 @@
+"""
+Vista de configuración del sistema SGI Salud.
+
+Permite al usuario personalizar:
+  • Tema de colores (oscuro, claro, personalizado con selectores visuales).
+  • Tamaño de fuente (pequeño, normal, grande, muy grande) con vista previa.
+  • Modo de número de historia (manual o automático).
+
+Los cambios se persisten en disco y se aplican en caliente al guardar
+mediante el callback on_config_changed(new_config).
+
+Cambios v2:
+    - Acepta tema/fuentes dinámicos desde el dashboard.
+    - Selector visual de color (SelectorColorPopup) para el tema personalizado.
+    - El cuadro de preview de color es clicable y abre el picker.
+"""
+
+import re
+import customtkinter as ctk
+
+from models.config import AppConfig, cargar_config, guardar_config, ColoresPersonalizados
+from models.tema import obtener_tema, obtener_tamano_fuente, TEMA_OSCURO, TEMA_CLARO, TAMANOS_FUENTE
+from views.selector_color_widget import SelectorColorPopup
+
+
+_PATRON_HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+class ConfiguracionView(ctk.CTkFrame):
+    """Vista de configuración general de la aplicación.
+
+    Args:
+        parent:            Widget padre.
+        config:            Configuración actual (AppConfig).
+        on_config_changed: Callback invocado tras guardar.
+        tema:              Dict de colores del tema activo.
+        fuentes:           Dict de tamaños de fuente activos.
+    """
+
+    _MAPA_TEMAS = {"Oscuro": "oscuro", "Claro": "claro", "Personalizado": "personalizado"}
+    _MAPA_TEMAS_INV = {v: k for k, v in _MAPA_TEMAS.items()}
+    _MAPA_TAMANOS = {"Pequeño": "pequeno", "Normal": "normal", "Grande": "grande", "Muy Grande": "muy_grande"}
+    _MAPA_TAMANOS_INV = {v: k for k, v in _MAPA_TAMANOS.items()}
+    _MAPA_MODO = {"Manual": "manual", "Automático": "auto"}
+    _MAPA_MODO_INV = {v: k for k, v in _MAPA_MODO.items()}
+
+    _CAMPOS_COLOR = [
+        ("fondo",        "Fondo"),
+        ("panel",        "Panel"),
+        ("acento",       "Acento"),
+        ("texto",        "Texto"),
+        ("entrada_fondo", "Entrada"),
+        ("fila_alterna", "Fila Alterna"),
+    ]
+
+    def __init__(self, parent, config, on_config_changed, tema=None, fuentes=None, **kwargs):
+        super().__init__(parent, fg_color="transparent", **kwargs)
+        self.config = config
+        self.on_config_changed = on_config_changed
+
+        # Colores dinámicos
+        t = tema or obtener_tema(config)
+        self.C_PANEL = t.get("panel", "#182633")
+        self.C_ACENTO = t.get("acento", "#00A8E8")
+        self.C_ACENTO_HOVER = t.get("acento_hover", "#007BB5")
+        self.C_TEXTO = t.get("texto", "#E8EDF2")
+        self.C_TEXTO_SEC = t.get("texto_secundario", "#8899AA")
+        self.C_ENTRADA = t.get("entrada_fondo", "#1E3044")
+        self.C_BORDE = t.get("entrada_borde", "#2A4158")
+        self.C_EXITO = t.get("exito", "#00D68F")
+        self.C_ERROR = t.get("error", "#FF4C6A")
+        self._tema_dict = t  # Para pasar al color picker
+
+        f = fuentes or obtener_tamano_fuente(config)
+        self.F_BASE = f.get("base", 12)
+
+        self._entradas_color: dict[str, ctk.CTkEntry] = {}
+        self._previews_color: dict[str, ctk.CTkFrame] = {}
+        self._crear_widgets()
+
+    # ══════════════════════════════════════════════════════════════════
+    #  INTERFAZ
+    # ══════════════════════════════════════════════════════════════════
+
+    def _crear_widgets(self):
+        scroll = ctk.CTkScrollableFrame(
+            self, fg_color="transparent",
+            scrollbar_button_color=self.C_ENTRADA,
+            scrollbar_button_hover_color=self.C_ACENTO,
+        )
+        scroll.pack(fill="both", expand=True)
+        self._scroll = scroll
+
+        self._crear_encabezado(scroll)
+        self._crear_seccion_tema(scroll)
+        self._crear_seccion_fuente(scroll)
+        self._crear_seccion_modo_historia(scroll)
+        self._crear_boton_guardar(scroll)
+
+    # ── Encabezado ────────────────────────────────────────────────────
+
+    def _crear_encabezado(self, parent):
+        card = ctk.CTkFrame(
+            parent, fg_color=self.C_PANEL, corner_radius=12,
+            border_width=1, border_color=self.C_BORDE,
+        )
+        card.pack(fill="x", pady=(0, 14))
+        ctk.CTkLabel(
+            card, text="⚙️ Configuración",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
+            text_color=self.C_TEXTO, anchor="w",
+        ).pack(fill="x", padx=20, pady=(16, 2))
+        ctk.CTkLabel(
+            card, text="Personalice la apariencia y comportamiento. Los cambios se aplican de inmediato.",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            text_color=self.C_TEXTO_SEC, anchor="w", wraplength=600,
+        ).pack(fill="x", padx=20, pady=(0, 16))
+
+    # ══════════════════════════════════════════════════════════════════
+    #  SECCIÓN TEMA
+    # ══════════════════════════════════════════════════════════════════
+
+    def _crear_seccion_tema(self, parent):
+        card = ctk.CTkFrame(
+            parent, fg_color=self.C_PANEL, corner_radius=12,
+            border_width=1, border_color=self.C_BORDE,
+        )
+        card.pack(fill="x", pady=(0, 14))
+
+        ctk.CTkLabel(
+            card, text="🎨 Tema de Colores",
+            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            text_color=self.C_TEXTO, anchor="w",
+        ).pack(fill="x", padx=20, pady=(16, 10))
+
+        tema_label = self._MAPA_TEMAS_INV.get(self.config.tema, "Oscuro")
+        self.selector_tema = ctk.CTkSegmentedButton(
+            card, values=["Oscuro", "Claro", "Personalizado"],
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            selected_color=self.C_ACENTO, selected_hover_color=self.C_ACENTO_HOVER,
+            unselected_color=self.C_ENTRADA, unselected_hover_color=self.C_BORDE,
+            text_color="#FFFFFF", command=self._al_cambiar_tema,
+        )
+        self.selector_tema.set(tema_label)
+        self.selector_tema.pack(fill="x", padx=20, pady=(0, 12))
+
+        # Panel de colores personalizados
+        self.panel_colores = ctk.CTkFrame(
+            card, fg_color=self.C_ENTRADA, corner_radius=10,
+            border_width=1, border_color=self.C_BORDE,
+        )
+        if self.config.tema == "personalizado":
+            self.panel_colores.pack(fill="x", padx=20, pady=(0, 16))
+
+        ctk.CTkLabel(
+            self.panel_colores, text="Colores Personalizados",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            text_color=self.C_TEXTO, anchor="w",
+        ).pack(fill="x", padx=14, pady=(10, 6))
+
+        colores_actuales = self.config.colores_personalizados
+        for campo, etiqueta in self._CAMPOS_COLOR:
+            self._crear_fila_color(
+                self.panel_colores, campo, etiqueta,
+                getattr(colores_actuales, campo),
+            )
+
+        ctk.CTkFrame(card, fg_color="transparent", height=4).pack()
+
+    def _crear_fila_color(self, parent, campo, etiqueta, valor_inicial):
+        """Fila: [Etiqueta] [Entry hex] [Preview clicable]."""
+        fila = ctk.CTkFrame(parent, fg_color="transparent")
+        fila.pack(fill="x", padx=14, pady=2)
+
+        ctk.CTkLabel(
+            fila, text=etiqueta, width=85, anchor="w",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=self.C_TEXTO,
+        ).pack(side="left", padx=(0, 6))
+
+        entrada = ctk.CTkEntry(
+            fila, font=ctk.CTkFont(family="Segoe UI", size=11),
+            fg_color=self.C_PANEL, border_color=self.C_BORDE,
+            text_color=self.C_TEXTO, width=100, height=28, corner_radius=6,
+        )
+        entrada.insert(0, valor_inicial)
+        entrada.pack(side="left", padx=(0, 6))
+        entrada.bind("<KeyRelease>", lambda e, c=campo: self._actualizar_preview(c))
+        self._entradas_color[campo] = entrada
+
+        # Preview clicable — abre el SelectorColorPopup
+        preview = ctk.CTkFrame(
+            fila, fg_color=valor_inicial, width=28, height=28,
+            corner_radius=6, border_width=1, border_color=self.C_BORDE,
+        )
+        preview.pack(side="left")
+        preview.pack_propagate(False)
+        preview.bind("<Button-1>", lambda e, c=campo: self._abrir_color_picker(c))
+        self._previews_color[campo] = preview
+
+    def _abrir_color_picker(self, campo):
+        """Abre el selector visual de color para el campo dado."""
+        color_actual = self._entradas_color[campo].get().strip()
+        if not _PATRON_HEX.match(color_actual):
+            color_actual = "#0F1923"
+
+        widget_preview = self._previews_color[campo]
+        SelectorColorPopup(
+            widget_preview,
+            callback=lambda hex_c, c=campo: self._al_seleccionar_color(c, hex_c),
+            color_inicial=color_actual,
+            colores_tema=self._tema_dict,
+        )
+
+    def _al_seleccionar_color(self, campo, hex_color):
+        """Callback del color picker: actualiza entry y preview."""
+        self._entradas_color[campo].delete(0, "end")
+        self._entradas_color[campo].insert(0, hex_color)
+        self._previews_color[campo].configure(
+            fg_color=hex_color, border_color=self.C_BORDE,
+        )
+        self._entradas_color[campo].configure(border_color=self.C_BORDE)
+
+    def _actualizar_preview(self, campo):
+        """Actualiza el cuadro de preview al escribir un hex manualmente."""
+        valor = self._entradas_color[campo].get().strip()
+        if _PATRON_HEX.match(valor):
+            self._previews_color[campo].configure(
+                fg_color=valor, border_color=self.C_BORDE,
+            )
+            self._entradas_color[campo].configure(border_color=self.C_BORDE)
+        else:
+            self._previews_color[campo].configure(border_color=self.C_ERROR)
+            self._entradas_color[campo].configure(border_color=self.C_ERROR)
+
+    def _al_cambiar_tema(self, valor):
+        if valor == "Personalizado":
+            self.panel_colores.pack(fill="x", padx=20, pady=(0, 16))
+        else:
+            self.panel_colores.pack_forget()
+
+    # ══════════════════════════════════════════════════════════════════
+    #  SECCIÓN FUENTE
+    # ══════════════════════════════════════════════════════════════════
+
+    def _crear_seccion_fuente(self, parent):
+        card = ctk.CTkFrame(
+            parent, fg_color=self.C_PANEL, corner_radius=12,
+            border_width=1, border_color=self.C_BORDE,
+        )
+        card.pack(fill="x", pady=(0, 14))
+
+        ctk.CTkLabel(
+            card, text="🔤 Tamaño de Fuente",
+            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            text_color=self.C_TEXTO, anchor="w",
+        ).pack(fill="x", padx=20, pady=(16, 10))
+
+        tamano_label = self._MAPA_TAMANOS_INV.get(self.config.tamano_fuente, "Normal")
+        self.selector_tamano = ctk.CTkSegmentedButton(
+            card, values=["Pequeño", "Normal", "Grande", "Muy Grande"],
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            selected_color=self.C_ACENTO, selected_hover_color=self.C_ACENTO_HOVER,
+            unselected_color=self.C_ENTRADA, unselected_hover_color=self.C_BORDE,
+            text_color="#FFFFFF", command=self._al_cambiar_fuente,
+        )
+        self.selector_tamano.set(tamano_label)
+        self.selector_tamano.pack(fill="x", padx=20, pady=(0, 12))
+
+        # Vista previa
+        marco = ctk.CTkFrame(
+            card, fg_color=self.C_ENTRADA, corner_radius=8,
+            border_width=1, border_color=self.C_BORDE,
+        )
+        marco.pack(fill="x", padx=20, pady=(0, 16))
+        self.label_preview_fuente = ctk.CTkLabel(
+            marco,
+            text="Vista previa — Texto de ejemplo para verificar el tamaño.",
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_BASE),
+            text_color=self.C_TEXTO, anchor="w", wraplength=500,
+        )
+        self.label_preview_fuente.pack(fill="x", padx=14, pady=10)
+
+    def _al_cambiar_fuente(self, valor):
+        clave = self._MAPA_TAMANOS.get(valor, "normal")
+        tamano = TAMANOS_FUENTE.get(clave, TAMANOS_FUENTE["normal"])
+        self.label_preview_fuente.configure(
+            font=ctk.CTkFont(family="Segoe UI", size=tamano["base"]),
+        )
+
+    # ══════════════════════════════════════════════════════════════════
+    #  SECCIÓN MODO HISTORIA
+    # ══════════════════════════════════════════════════════════════════
+
+    def _crear_seccion_modo_historia(self, parent):
+        card = ctk.CTkFrame(
+            parent, fg_color=self.C_PANEL, corner_radius=12,
+            border_width=1, border_color=self.C_BORDE,
+        )
+        card.pack(fill="x", pady=(0, 14))
+
+        ctk.CTkLabel(
+            card, text="📋 Modo de N. Historia",
+            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            text_color=self.C_TEXTO, anchor="w",
+        ).pack(fill="x", padx=20, pady=(16, 10))
+
+        modo_label = self._MAPA_MODO_INV.get(self.config.modo_num_historia, "Manual")
+        self.selector_modo = ctk.CTkSegmentedButton(
+            card, values=["Manual", "Automático"],
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            selected_color=self.C_ACENTO, selected_hover_color=self.C_ACENTO_HOVER,
+            unselected_color=self.C_ENTRADA, unselected_hover_color=self.C_BORDE,
+            text_color="#FFFFFF", command=self._al_cambiar_modo,
+        )
+        self.selector_modo.set(modo_label)
+        self.selector_modo.pack(fill="x", padx=20, pady=(0, 12))
+
+        _DESCS = {
+            "manual": "Ingrese el número de historia manualmente",
+            "auto": "El sistema generará el siguiente número secuencial",
+        }
+        marco = ctk.CTkFrame(
+            card, fg_color=self.C_ENTRADA, corner_radius=8,
+            border_width=1, border_color=self.C_BORDE,
+        )
+        marco.pack(fill="x", padx=20, pady=(0, 16))
+        self.label_desc_modo = ctk.CTkLabel(
+            marco, text=_DESCS.get(self.config.modo_num_historia, _DESCS["manual"]),
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=self.C_TEXTO_SEC, anchor="w", wraplength=500,
+        )
+        self.label_desc_modo.pack(fill="x", padx=14, pady=10)
+
+    def _al_cambiar_modo(self, valor):
+        descs = {
+            "Manual": "Ingrese el número de historia manualmente",
+            "Automático": "El sistema generará el siguiente número secuencial",
+        }
+        self.label_desc_modo.configure(text=descs.get(valor, ""))
+
+    # ══════════════════════════════════════════════════════════════════
+    #  GUARDAR
+    # ══════════════════════════════════════════════════════════════════
+
+    def _crear_boton_guardar(self, parent):
+        marco = ctk.CTkFrame(parent, fg_color="transparent")
+        marco.pack(fill="x", pady=(6, 16))
+
+        ctk.CTkButton(
+            marco, text="💾  Guardar Configuración",
+            height=40, corner_radius=10,
+            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+            fg_color=self.C_ACENTO, hover_color=self.C_ACENTO_HOVER,
+            text_color="#FFFFFF", command=self._guardar,
+        ).pack(fill="x", padx=20)
+
+        self.label_mensaje = ctk.CTkLabel(
+            marco, text="",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=self.C_EXITO, anchor="w",
+        )
+        self.label_mensaje.pack(fill="x", padx=24, pady=(6, 0))
+
+    def _guardar(self):
+        """Valida, persiste y notifica cambios de configuración."""
+        try:
+            tema_valor = self._MAPA_TEMAS.get(self.selector_tema.get(), "oscuro")
+            tamano_valor = self._MAPA_TAMANOS.get(self.selector_tamano.get(), "normal")
+            modo_valor = self._MAPA_MODO.get(self.selector_modo.get(), "manual")
+
+            colores_pers = self.config.colores_personalizados
+            if tema_valor == "personalizado":
+                errores = self._validar_colores()
+                if errores:
+                    self._mostrar_msg(
+                        f"Color inválido en: {', '.join(errores)}. Use formato #RRGGBB.",
+                        error=True,
+                    )
+                    return
+                colores_pers = self._recopilar_colores()
+
+            nueva = AppConfig(
+                tema=tema_valor,
+                tamano_fuente=tamano_valor,
+                modo_num_historia=modo_valor,
+                colores_personalizados=colores_pers,
+            )
+            guardar_config(nueva)
+            self._mostrar_msg("✅ Configuración guardada correctamente", error=False)
+
+            if self.on_config_changed:
+                self.on_config_changed(nueva)
+        except Exception as e:
+            self._mostrar_msg(f"Error al guardar: {e}", error=True)
+
+    def _validar_colores(self):
+        errores = []
+        for campo, etiqueta in self._CAMPOS_COLOR:
+            if not _PATRON_HEX.match(self._entradas_color[campo].get().strip()):
+                errores.append(etiqueta)
+        return errores
+
+    def _recopilar_colores(self):
+        datos = self.config.colores_personalizados.model_dump()
+        for campo, _ in self._CAMPOS_COLOR:
+            datos[campo] = self._entradas_color[campo].get().strip()
+        return ColoresPersonalizados(**datos)
+
+    def _mostrar_msg(self, texto, error=False):
+        color = self.C_ERROR if error else self.C_EXITO
+        self.label_mensaje.configure(text=texto, text_color=color)
+        self.after(4000, lambda: self.label_mensaje.configure(text=""))

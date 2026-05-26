@@ -118,3 +118,23 @@ class TarjetaDAO:
             return cursor.rowcount > 0
         finally:
             conn.close()
+
+    def obtener_ultimo_num_historia(self) -> str | None:
+        """Obtiene el último número de historia registrado (mayor ID).
+
+        Consulta la tarjeta activa con el ID más alto para determinar
+        el siguiente número secuencial.
+
+        Returns:
+            String con el último num_historia (ej: '03-77-34'),
+            o None si no hay tarjetas registradas.
+        """
+        conn = self.db.obtener_conexion()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT num_historia FROM tarjetas WHERE estado = 1 "
+            "ORDER BY id DESC LIMIT 1"
+        )
+        fila = cursor.fetchone()
+        conn.close()
+        return fila[0] if fila else None

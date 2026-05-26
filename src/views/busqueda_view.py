@@ -24,8 +24,8 @@ class BusquedaView(ctk.CTkFrame):
     CRITERIOS = [
         ("todos",            "Todos"),
         ("cedula",           "Cedula"),
-        ("nombre_completo",  "Nombre Completo"),
-        ("apellido",         "Apellido"),
+        ("nombre_completo",  "Nombres"),
+        ("apellido",         "Apellidos"),
         ("fecha_nacimiento", "Fecha de Nacimiento"),
         ("lugar_nacimiento", "Lugar de Nacimiento"),
     ]
