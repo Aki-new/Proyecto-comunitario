@@ -1,15 +1,19 @@
 import os
 import sys
-import sqlite3
 
 # ── Agregar 'src/' al path para que los imports internos funcionen ──
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.join(BASE_DIR, "src")
 sys.path.insert(0, SRC_DIR)
 
+import sqlite3
+# pyrefly: ignore [missing-import]
 import customtkinter as ctk
-from views.login_view import LoginView
+# pyrefly: ignore [missing-import]
 from views.dashboard_view import DashboardView
+# pyrefly: ignore [missing-import]
+from views.login_view import LoginView
+from utils.logging_config import inicializar_logs
 
 
 # ── Rutas de la base de datos ─────────────────────────────────────
@@ -39,7 +43,8 @@ def inicializar_db():
             else:
                 raise
     else:
-        print(f"[ADVERTENCIA] No se encontro el archivo de esquema: {SQL_PATH}")
+        print(
+            f"[ADVERTENCIA] No se encontro el archivo de esquema: {SQL_PATH}")
 
     conn.close()
 
@@ -95,6 +100,7 @@ class App:
 
 # ── Entry Point ──────────────────────────────────────────────────
 if __name__ == "__main__":
+    inicializar_logs()
     inicializar_db()
     app = App()
     app.iniciar()

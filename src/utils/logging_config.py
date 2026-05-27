@@ -1,4 +1,6 @@
+import os
 import sys
+# pyrefly: ignore [missing-import]
 from loguru import logger
 
 
@@ -14,9 +16,17 @@ def inicializar_logs():
         enqueue=True
     )
 
+    # Calcular ruta absoluta del archivo de logs basada en la ubicación del archivo
+    # Volver 3 niveles arriba: utils -> src -> raíz
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    LOG_PATH = os.path.join(BASE_DIR, "logs", "app.log")
+
+    # Asegurar que el directorio de logs exista
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+
     # 2. Log en Archivo (Rotativo y persistente para depurar fallos en producción)
     logger.add(
-        "logs/app.log",
+        LOG_PATH,
         rotation="10 MB",
         retention="14 days",
         compression="zip",
