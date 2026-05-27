@@ -66,21 +66,21 @@ class BusquedaDAO:
         )
 
     def buscar_por_nombre(self, nombre: str) -> list[TarjetaSalida]:
-        """Búsqueda parcial por nombre1 o nombre2."""
+        """Búsqueda parcial por nombre completo (nombre1 y nombre2 concatenados)."""
+        v = nombre.strip()
         return self._ejecutar_consulta(
             f"SELECT * FROM vista_paciente_tarjeta "
-            f"WHERE nombre1 LIKE ? COLLATE NOCASE "
-            f"OR nombre2 LIKE ? COLLATE NOCASE{self._ORDEN}",
-            (f"%{nombre}%", f"%{nombre}%"),
+            f"WHERE (nombre1 || ' ' || COALESCE(nombre2, '')) LIKE ? COLLATE NOCASE{self._ORDEN}",
+            (f"%{v}%",),
         )
 
     def buscar_por_apellido(self, apellido: str) -> list[TarjetaSalida]:
-        """Búsqueda parcial por apellido1 o apellido2."""
+        """Búsqueda parcial por apellido completo (apellido1 y apellido2 concatenados)."""
+        v = apellido.strip()
         return self._ejecutar_consulta(
             f"SELECT * FROM vista_paciente_tarjeta "
-            f"WHERE apellido1 LIKE ? COLLATE NOCASE "
-            f"OR apellido2 LIKE ? COLLATE NOCASE{self._ORDEN}",
-            (f"%{apellido}%", f"%{apellido}%"),
+            f"WHERE (apellido1 || ' ' || COALESCE(apellido2, '')) LIKE ? COLLATE NOCASE{self._ORDEN}",
+            (f"%{v}%",),
         )
 
     def buscar_por_nombre_completo(self, texto: str) -> list[TarjetaSalida]:
@@ -147,4 +147,94 @@ class BusquedaDAO:
             f"SELECT * FROM vista_paciente_tarjeta "
             f"WHERE num_historia LIKE ?{self._ORDEN}",
             (f"%{num_historia}%",),
+        )
+
+    def buscar_multicriterio(self, filtros: dict) -> list[TarjetaSalida]:
+        """Búsqueda avanzada multi-criterio combinando filtros con AND.
+
+        Args:
+            filtros: Dict con claves de búsqueda y sus valores.
+                     Claves soportadas:
+                     - 'cedula': str
+                     - 'nombre': str
+                     - 'apellido': str
+                     - 'lugar_nacimiento': str
+                     - 'fecha_nacimiento': str (YYYY-MM-DD o parcial)
+                     - 'fecha_nacimiento_partes': tuple[str, str, str] (dia, mes, anio)
+
+        Returns:
+            Lista de TarjetaSalida que cumplen con todos los filtros.
+        """
+        if not filtros:
+            return self.obtener_todos()
+
+        condiciones = []
+        parametros = []
+
+        for clave, valor in filtros.items():
+            if valor is None:
+                continue
+
+            if clave == "cedula":
+                v = str(valor).strip()
+                if v:
+                    condiciones.append("cedula LIKE ? COLLATE NOCASE")
+                    parametros.append(f"%{v}%")
+
+            elif clave == "nombre":
+                v = str(valor).strip()
+                if v:
+                    condiciones.append("(nombre1 || ' ' || COALESCE(nombre2,'')) LIKE ? COLLATE NOCASE")
+                    parametros.append(f"%{v}%")
+
+            elif clave == "apellido":
+                v = str(valor).strip()
+                if v:
+                    condiciones.append("(apellido1 || ' ' || COALESCE(apellido2,'')) LIKE ? COLLATE NOCASE")
+                    parametros.append(f"%{v}%")
+
+            elif clave == "lugar_nacimiento":
+                v = str(valor).strip()
+                if v:
+                    condiciones.append("lugar_nacimiento LIKE ? COLLATE NOCASE")
+                    parametros.append(f"%{v}%")
+
+            elif clave == "fecha_nacimiento":
+                v = str(valor).strip()
+                if v:
+                    condiciones.append("fecha_nacimiento LIKE ?")
+                    parametros.append(f"%{v}%")
+
+            elif clave == "fecha_nacimiento_partes":
+                # valor es (dia, mes, anio)
+                dia, mes, anio = valor
+                if dia and str(dia).strip():
+                    try:
+                        dia_val = f"{int(dia):02d}"
+                        condiciones.append("strftime('%d', fecha_nacimiento) = ?")
+                        parametros.append(dia_val)
+                    except ValueError:
+                        pass
+                if mes and str(mes).strip():
+                    try:
+                        mes_val = f"{int(mes):02d}"
+                        condiciones.append("strftime('%m', fecha_nacimiento) = ?")
+                        parametros.append(mes_val)
+                    except ValueError:
+                        pass
+                if anio and str(anio).strip():
+                    try:
+                        anio_val = f"{int(anio):04d}"
+                        condiciones.append("strftime('%Y', fecha_nacimiento) = ?")
+                        parametros.append(anio_val)
+                    except ValueError:
+                        pass
+
+        if not condiciones:
+            return self.obtener_todos()
+
+        where = " AND ".join(condiciones)
+        return self._ejecutar_consulta(
+            f"SELECT * FROM vista_paciente_tarjeta WHERE {where}{self._ORDEN}",
+            tuple(parametros),
         )

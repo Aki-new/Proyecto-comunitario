@@ -65,9 +65,16 @@ class DashboardView(ctk.CTkToplevel):
     # ══════════════════════════════════════════════════════════════════
 
     def _cargar_colores_desde_config(self):
-        """Lee colores y fuentes de la config actual y los guarda como atributos."""
+        """Lee colores y fuentes de la config actual y los guarda como atributos.
+        También actualiza la base de datos de opciones de Tkinter para mantener
+        el contraste de selección (fuente blanca sobre acento de color).
+        """
         self.colores = obtener_tema(self.config)
         self.fuentes = obtener_tamano_fuente(self.config)
+
+        # Actualizar opciones de selección a nivel global de la aplicación
+        self.master.option_add("*Entry.selectForeground", "white")
+        self.master.option_add("*Entry.selectBackground", self.colores.get("acento", "#0078D4"))
 
     def aplicar_tema(self, nueva_config: AppConfig):
         """Aplica un nuevo tema en caliente a todo el dashboard.

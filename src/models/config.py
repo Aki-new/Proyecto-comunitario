@@ -72,6 +72,7 @@ class AppConfig(BaseModel):
     tema: str = Field(default="oscuro")
     tamano_fuente: str = Field(default="normal")
     modo_num_historia: str = Field(default="manual")
+    registros_por_pagina: int = Field(default=20)
     colores_personalizados: ColoresPersonalizados = Field(
         default_factory=ColoresPersonalizados
     )

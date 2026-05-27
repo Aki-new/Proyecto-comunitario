@@ -30,6 +30,7 @@ _COLORES_POR_DEFECTO = {
     "texto_secundario": "#8899AA",
     "entrada_fondo": "#1E3044",
     "entrada_borde": "#2A4158",
+    "error": "#FF4C6A",
 }
 
 _FUENTE_TAMANOS_POR_DEFECTO = {
@@ -115,10 +116,11 @@ class CalendarioPopup(ctk.CTkToplevel):
     # ==========================================================================
 
     def _crear_encabezado(self):
-        """Crea la barra de navegacion: « ← [Mes Año] → ».
+        """Crea la barra de navegacion: « ← [Mes Año] → » y boton de cerrar.
 
-        4 botones: « retrocede un año, ← retrocede un mes,
-        → avanza un mes, » avanza un año.
+        Botones: « retrocede un año, ← retrocede un mes,
+        → avanza un mes, » avanza un año, y un boton ✕ para cerrar el popup.
+        Los años van en los bordes externos y los meses en los internos.
         """
         marco_encabezado = ctk.CTkFrame(
             self,
@@ -135,38 +137,50 @@ class CalendarioPopup(ctk.CTkToplevel):
             text_color=self._colores["texto"],
         )
 
-        # Boton año anterior
+        # Boton año anterior (borde externo izquierdo)
         ctk.CTkButton(
             marco_encabezado, text="«", width=28,
             command=self._anio_anterior, **estilo_btn_nav,
         ).pack(side="left", padx=(0, 2))
 
-        # Boton mes anterior
+        # Boton mes anterior (borde interno izquierdo)
         ctk.CTkButton(
             marco_encabezado, text="←", width=28,
             command=self._mes_anterior, **estilo_btn_nav,
         ).pack(side="left", padx=(0, 4))
 
-        # Etiqueta de mes y anio
+        # Boton cerrar (borde externo derecho)
+        color_error = self._colores.get("error", "#FF4C6A")
+        ctk.CTkButton(
+            marco_encabezado, text="✕", width=24,
+            command=self._cerrar_popup,
+            height=28, corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=self._fuentes["base"], weight="bold"),
+            fg_color=self._colores["entrada_fondo"],
+            hover_color=color_error,
+            text_color=self._colores["texto"],
+        ).pack(side="right", padx=(6, 0))
+
+        # Boton año siguiente (borde externo derecho antes del boton cerrar)
+        ctk.CTkButton(
+            marco_encabezado, text="»", width=28,
+            command=self._anio_siguiente, **estilo_btn_nav,
+        ).pack(side="right", padx=(2, 0))
+
+        # Boton mes siguiente (borde interno derecho)
+        ctk.CTkButton(
+            marco_encabezado, text="→", width=28,
+            command=self._mes_siguiente, **estilo_btn_nav,
+        ).pack(side="right", padx=(4, 0))
+
+        # Etiqueta de mes y anio (centro)
         self.etiqueta_mes_anio = ctk.CTkLabel(
             marco_encabezado,
             text="",
             font=ctk.CTkFont(family="Segoe UI", size=self._fuentes["subtitulo"], weight="bold"),
             text_color=self._colores["texto"],
         )
-        self.etiqueta_mes_anio.pack(side="left", expand=True)
-
-        # Boton mes siguiente
-        ctk.CTkButton(
-            marco_encabezado, text="→", width=28,
-            command=self._mes_siguiente, **estilo_btn_nav,
-        ).pack(side="right", padx=(4, 0))
-
-        # Boton año siguiente
-        ctk.CTkButton(
-            marco_encabezado, text="»", width=28,
-            command=self._anio_siguiente, **estilo_btn_nav,
-        ).pack(side="right", padx=(2, 0))
+        self.etiqueta_mes_anio.pack(side="left", expand=True, padx=4)
 
     def _crear_fila_nombres_dias(self):
         """Crea la fila con los nombres abreviados de los dias de la semana."""
@@ -400,6 +414,17 @@ class CalendarioPopup(ctk.CTkToplevel):
 
         self.geometry(f"+{pos_x}+{pos_y}")
 
+    def _cerrar_popup(self):
+        """Cierra el popup liberando el grab de forma segura."""
+        try:
+            self.grab_release()
+        except Exception:
+            pass
+        try:
+            self.destroy()
+        except Exception:
+            pass
+
     def _al_perder_foco(self, evento=None):
         """Cierra el popup cuando pierde el foco del teclado.
 
@@ -418,11 +443,10 @@ class CalendarioPopup(ctk.CTkToplevel):
                 padre_del_foco = str(widget_con_foco)
                 if str(self) in padre_del_foco:
                     return
-        except KeyError:
+        except Exception:
             pass
 
-        self.grab_release()
-        self.destroy()
+        self._cerrar_popup()
 
 
 # ==============================================================================

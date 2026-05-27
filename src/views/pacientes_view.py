@@ -61,11 +61,11 @@ class PacientesView(ctk.CTkFrame):
         ("apellido",         "Apellidos"),
         ("fecha_nacimiento", "Fecha Nacimiento"),
         ("lugar_nacimiento", "Lugar Nacimiento"),
-        ("num_historia",     "N. Historia"),
     ]
 
-    # Anchos fijos de columnas en píxeles para alineación
+    # Proporciones y datos de columnas
     ANCHOS_COLUMNAS = [90, 180, 85, 110, 80, 100]
+    PESOS_COLUMNAS = [12, 24, 12, 16, 12, 14]
     NOMBRES_COLUMNAS = ["Cedula", "Nombre", "F. Nac.", "Lugar Nac.", "N. Historia", "Color"]
 
     # ══════════════════════════════════════════════════════════════════
@@ -115,6 +115,12 @@ class PacientesView(ctk.CTkFrame):
         self._widgets_filas_tabla: list[ctk.CTkFrame] = []
         self._formulario_visible = False
         self.config = cargar_config()
+
+        # Estado de Paginación
+        self.pagina_actual = 1
+        self.registros_por_pagina = self.config.registros_por_pagina
+        self._todos_los_registros = []
+
         self._construir_interfaz()
         self._buscar_todos()
 
@@ -124,89 +130,35 @@ class PacientesView(ctk.CTkFrame):
 
     def _construir_interfaz(self):
         """Construye todos los elementos de la interfaz:
-        barra de búsqueda, info, cuerpo (tabla + formulario).
+        panel de búsqueda y filtros unificado, info, cuerpo (tabla + formulario).
         """
-        # ── Barra de búsqueda (compacta, altura fija 42px) ──
-        barra_busqueda = ctk.CTkFrame(
-            self, fg_color=self.COLOR_PANEL, corner_radius=8, height=42
+        # ── Panel de búsqueda y filtros unificado (siempre visible, altura dinámica) ──
+        self.panel_busqueda_filtros = ctk.CTkFrame(
+            self, fg_color=self.COLOR_PANEL, corner_radius=12,
+            border_width=1, border_color=self.COLOR_ENTRY_BORDER,
         )
-        barra_busqueda.pack(fill="x", pady=(0, 3))
-        barra_busqueda.pack_propagate(False)
+        self.panel_busqueda_filtros.pack(fill="x", pady=(0, 4))
 
-        ctk.CTkLabel(
-            barra_busqueda, text="Buscar:",
-            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA, weight="bold"),
-            text_color=self.COLOR_TEXT_SEC,
-        ).pack(side="left", padx=(10, 4))
+        self.panel_filtros_visible = True
+        self._construir_panel_filtros()
+        self._actualizar_campos_filtros()
 
-        # Dropdown de criterio de búsqueda
-        self.variable_criterio_busqueda = ctk.StringVar(value="Todos")
-        ctk.CTkOptionMenu(
-            barra_busqueda, variable=self.variable_criterio_busqueda,
-            values=[criterio[1] for criterio in self.CRITERIOS],
-            width=145, height=26, corner_radius=6,
-            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA),
-            fg_color=self.COLOR_ENTRY_BG, button_color=self.COLOR_ACCENT,
-            button_hover_color=self.COLOR_ACCENT_HOVER,
-            dropdown_fg_color=self.COLOR_PANEL,
-            dropdown_hover_color=self.COLOR_ENTRY_BG,
-            text_color=self.COLOR_TEXT,
-            command=self._al_cambiar_criterio,
-        ).pack(side="left", padx=(0, 4))
-
-        # Campo de texto de búsqueda
-        self.entrada_busqueda = ctk.CTkEntry(
-            barra_busqueda, placeholder_text="Ingrese valor de busqueda...",
-            height=26, corner_radius=6,
-            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA),
-            fg_color=self.COLOR_ENTRY_BG, border_color=self.COLOR_ENTRY_BORDER,
-            text_color=self.COLOR_TEXT,
-            placeholder_text_color=self.COLOR_TEXT_SEC,
-        )
-        self.entrada_busqueda.pack(side="left", fill="x", expand=True, padx=(0, 4))
-        self.entrada_busqueda.bind("<Return>", lambda _: self._ejecutar_busqueda())
-        self.entrada_busqueda.bind("<KeyRelease>", self._busqueda_en_vivo)
         self._id_debounce_busqueda = None
 
-        # Botones de la barra
-        estilo_boton_barra = dict(
-            height=26, corner_radius=6,
-            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA, weight="bold"),
-        )
-
-        ctk.CTkButton(
-            barra_busqueda, text="Buscar", width=65,
-            fg_color=self.COLOR_ACCENT, hover_color=self.COLOR_ACCENT_HOVER,
-            text_color="#FFF", command=self._ejecutar_busqueda,
-            **estilo_boton_barra,
-        ).pack(side="left", padx=(0, 8))
-
-        # Separador vertical
-        ctk.CTkFrame(
-            barra_busqueda, fg_color=self.COLOR_ENTRY_BORDER, width=1
-        ).pack(side="left", fill="y", pady=8, padx=(0, 8))
-
-        ctk.CTkButton(
-            barra_busqueda, text="+ Nuevo Ingreso", width=120,
-            fg_color=self.COLOR_SUCCESS, hover_color="#00B377",
-            text_color="#FFF", command=self._nuevo_ingreso,
-            **estilo_boton_barra,
-        ).pack(side="left", padx=(0, 10))
-
         # ── Línea de información (mensaje + conteo) ──
-        marco_info = ctk.CTkFrame(self, fg_color="transparent", height=18)
-        marco_info.pack(fill="x", pady=(0, 2))
-        marco_info.pack_propagate(False)
+        self.marco_info = ctk.CTkFrame(self, fg_color="transparent", height=18)
+        self.marco_info.pack(fill="x", pady=(0, 2))
+        self.marco_info.pack_propagate(False)
 
         self.etiqueta_mensaje = ctk.CTkLabel(
-            marco_info, text="", anchor="w",
-            font=ctk.CTkFont(family="Segoe UI", size=10),
-            text_color=self.COLOR_TEXT_SEC,
+            self.marco_info, text="",
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA),
+            text_color=self.COLOR_SUCCESS, anchor="w",
         )
-        self.etiqueta_mensaje.pack(side="left", padx=4)
+        self.etiqueta_mensaje.pack(side="left", fill="x", expand=True, padx=4)
 
         self.etiqueta_conteo = ctk.CTkLabel(
-            marco_info, text="", anchor="e",
+            self.marco_info, text="0 resultados",
             font=ctk.CTkFont(family="Segoe UI", size=10),
             text_color=self.COLOR_TEXT_SEC,
         )
@@ -220,6 +172,7 @@ class PacientesView(ctk.CTkFrame):
 
         self._construir_tabla(self.cuerpo)
         self._construir_formulario(self.cuerpo)
+        self._aplicar_estilo_seleccion_inputs()
 
     # ── TABLA ─────────────────────────────────────────────────────────
 
@@ -248,31 +201,63 @@ class PacientesView(ctk.CTkFrame):
         )
         self.tabla_scroll.grid(row=0, column=0, sticky="nsew", padx=3, pady=3)
 
-        # Configurar columnas con anchos fijos
-        for indice, ancho in enumerate(self.ANCHOS_COLUMNAS):
-            self.tabla_scroll.grid_columnconfigure(indice, weight=1, minsize=ancho)
+        # Configurar columna única en el contenedor scrollable para evitar desalineación
+        self.tabla_scroll.grid_columnconfigure(0, weight=1)
 
-        # Header embebido en el scroll
-        fila_cabecera = ctk.CTkFrame(
+        # Fondo de cabecera embebido en el scroll (ocupa la columna 0 completa)
+        self.fondo_cabecera = ctk.CTkFrame(
             self.tabla_scroll, fg_color=self.COLOR_ENTRY_BG,
-            corner_radius=4, height=28,
+            corner_radius=4, height=32,
         )
-        fila_cabecera.grid(
+        self.fondo_cabecera.grid(
             row=0, column=0,
-            columnspan=len(self.NOMBRES_COLUMNAS),
+            columnspan=1,
             sticky="ew", pady=(0, 3),
         )
-        fila_cabecera.grid_propagate(False)
+        self.fondo_cabecera.grid_propagate(False)
 
-        for indice, (nombre, ancho) in enumerate(
-            zip(self.NOMBRES_COLUMNAS, self.ANCHOS_COLUMNAS)
-        ):
-            fila_cabecera.grid_columnconfigure(indice, weight=1, minsize=ancho)
+        # Configurar columnas de la cabecera
+        for indice, peso in enumerate(self.PESOS_COLUMNAS):
+            self.fondo_cabecera.grid_columnconfigure(indice, weight=peso, uniform="columna_tabla")
+
+        for indice, nombre in enumerate(self.NOMBRES_COLUMNAS):
             ctk.CTkLabel(
-                fila_cabecera, text=nombre,
+                self.fondo_cabecera, text=nombre,
                 font=ctk.CTkFont(family="Segoe UI", size=self.F_TABLA_HEADER, weight="bold"),
                 text_color=self.COLOR_TEXT_SEC, anchor="w",
-            ).grid(row=0, column=indice, sticky="ew", padx=6, pady=5)
+                width=10,
+            ).grid(row=0, column=indice, sticky="ew", padx=8, pady=4)
+
+        # ── Controles de Paginación ──
+        self.panel_tabla.grid_rowconfigure(0, weight=1)
+        self.panel_tabla.grid_rowconfigure(1, weight=0)
+
+        self.marco_paginacion = ctk.CTkFrame(self.panel_tabla, fg_color="transparent", height=32)
+        self.marco_paginacion.grid(row=1, column=0, sticky="ew", padx=10, pady=(2, 6))
+        self.marco_paginacion.grid_propagate(False)
+
+        self.btn_pag_anterior = ctk.CTkButton(
+            self.marco_paginacion, text="← Anterior", width=80, height=24, corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA, weight="bold"),
+            fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT,
+            hover_color=self.COLOR_ENTRY_BORDER, command=self._pag_anterior,
+        )
+        self.btn_pag_anterior.pack(side="left", padx=4)
+
+        self.label_info_paginacion = ctk.CTkLabel(
+            self.marco_paginacion, text="Pág. 1 de 1 (0 registros)",
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA),
+            text_color=self.COLOR_TEXT_SEC,
+        )
+        self.label_info_paginacion.pack(side="left", expand=True)
+
+        self.btn_pag_siguiente = ctk.CTkButton(
+            self.marco_paginacion, text="Siguiente →", width=80, height=24, corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA, weight="bold"),
+            fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT,
+            hover_color=self.COLOR_ENTRY_BORDER, command=self._pag_siguiente,
+        )
+        self.btn_pag_siguiente.pack(side="right", padx=4)
 
     # ── FORMULARIO ────────────────────────────────────────────────────
 
@@ -402,6 +387,7 @@ class PacientesView(ctk.CTkFrame):
             button_hover_color=self.COLOR_ACCENT_HOVER,
             dropdown_fg_color=self.COLOR_PANEL,
             dropdown_hover_color=self.COLOR_ENTRY_BG,
+            dropdown_text_color=self.COLOR_TEXT,
             text_color=self.COLOR_TEXT,
             command=self._al_cambiar_tipo_cedula,
         )
@@ -435,7 +421,25 @@ class PacientesView(ctk.CTkFrame):
         ctk.CTkLabel(
             scroll_formulario, text="Fecha de Nacimiento *", **estilo_etiqueta
         ).pack(fill="x", padx=4, pady=(3, 1))
-        self.campo_fecha_nacimiento = CampoFecha(scroll_formulario)
+        self.campo_fecha_nacimiento = CampoFecha(
+            scroll_formulario,
+            tema={
+                "entrada_fondo": self.COLOR_ENTRY_BG,
+                "entrada_borde": self.COLOR_ENTRY_BORDER,
+                "texto": self.COLOR_TEXT,
+                "texto_secundario": self.COLOR_TEXT_SEC,
+                "acento": self.COLOR_ACCENT,
+                "acento_hover": self.COLOR_ACCENT_HOVER,
+                "panel": self.COLOR_PANEL,
+                "error": self.COLOR_ERROR,
+            },
+            fuente_tamano={
+                "base": self.F_BASE,
+                "titulo": self.F_TITULO,
+                "subtitulo": self.F_SUBTITULO,
+                "etiqueta": self.F_ETIQUETA,
+            }
+        )
         self.campo_fecha_nacimiento.pack(fill="x", padx=4, pady=(0, 1))
 
         # Estado vital (dropdown)
@@ -450,6 +454,7 @@ class PacientesView(ctk.CTkFrame):
             text_color=self.COLOR_TEXT,
             dropdown_fg_color=self.COLOR_PANEL,
             dropdown_hover_color=self.COLOR_ENTRY_BG,
+            dropdown_text_color=self.COLOR_TEXT,
         )
         self.selector_estado_vital.set("Vivo")
         self.selector_estado_vital.pack(fill="x", padx=4, pady=(0, 1))
@@ -473,13 +478,13 @@ class PacientesView(ctk.CTkFrame):
 
         self.modo_historia = ctk.CTkSegmentedButton(
             scroll_formulario, values=["Manual", "Auto"],
-            font=ctk.CTkFont(family="Segoe UI", size=10),
-            fg_color=self.COLOR_ENTRY_BG,
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            fg_color=("#2A4158", "#1E3044"),
             selected_color=self.COLOR_ACCENT,
             selected_hover_color=self.COLOR_ACCENT_HOVER,
-            unselected_color=self.COLOR_ENTRY_BG,
-            unselected_hover_color=self.COLOR_ENTRY_BORDER,
-            text_color=self.COLOR_TEXT,
+            unselected_color=("#2A4158", "#1E3044"),
+            unselected_hover_color=("#35526F", "#2A4158"),
+            text_color="#E8EDF2",
             command=self._al_cambiar_modo_historia,
         )
         modo_inicial = "Auto" if self.config.modo_num_historia == "auto" else "Manual"
@@ -532,26 +537,21 @@ class PacientesView(ctk.CTkFrame):
             text_color=self.COLOR_ERROR,
         )
         self.etiqueta_errores.pack(fill="x", padx=4, pady=(2, 2))
+        self._aplicar_estilo_seleccion_inputs()
 
     # ══════════════════════════════════════════════════════════════════
     #  MOSTRAR / OCULTAR FORMULARIO
     # ══════════════════════════════════════════════════════════════════
 
     def _mostrar_formulario(self, titulo="Nuevo Ingreso"):
-        """Despliega el panel del formulario lateral.
-
-        Reduce la tabla al 55% del ancho y muestra el formulario al 45%.
-
-        Args:
-            titulo: Texto a mostrar en el encabezado del formulario.
-        """
+        """Despliega el panel del formulario lateral."""
         if self._formulario_visible:
             self.etiqueta_titulo_formulario.configure(text=titulo)
             return
         self._formulario_visible = True
         self.etiqueta_titulo_formulario.configure(text=titulo)
-        self.cuerpo.grid_columnconfigure(0, weight=55)
-        self.cuerpo.grid_columnconfigure(1, weight=45)
+        self.cuerpo.grid_columnconfigure(0, weight=60)
+        self.cuerpo.grid_columnconfigure(1, weight=40)
         self.panel_formulario.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
 
     def _cerrar_formulario(self):
@@ -658,60 +658,300 @@ class PacientesView(ctk.CTkFrame):
     #  BÚSQUEDA
     # ══════════════════════════════════════════════════════════════════
 
-    def _al_cambiar_criterio(self, valor):
-        """Callback al cambiar el criterio de búsqueda.
-
-        Si se selecciona 'Todos', ejecuta la búsqueda automáticamente.
-
-        Args:
-            valor: Texto del criterio seleccionado.
-        """
-        if valor == "Todos":
-            self.entrada_busqueda.delete(0, "end")
-            self._buscar_todos()
-
     def _buscar_todos(self):
-        """Ejecuta una búsqueda sin filtros (muestra todos los pacientes)."""
+        """Ejecuta una búsqueda sin filtros (muestra todos los pacientes) y los pagina."""
         try:
-            self._renderizar_resultados(self.controlador_busqueda.obtener_todos())
+            self._todos_los_registros = self.controlador_busqueda.obtener_todos()
+            self.pagina_actual = 1
+            self._actualizar_tabla_paginada()
         except Exception as error:
             self._mostrar_mensaje(f"Error: {error}", True)
 
-    def _ejecutar_busqueda(self):
-        """Ejecuta la búsqueda según el criterio y valor ingresados.
+    def _construir_panel_filtros(self):
+        """Construye los elementos del panel de búsqueda y filtros unificado."""
+        # Título y fila de checkboxes
+        fila_cabecera = ctk.CTkFrame(self.panel_busqueda_filtros, fg_color="transparent")
+        fila_cabecera.pack(fill="x", padx=12, pady=(10, 4))
+        
+        ctk.CTkLabel(
+            fila_cabecera, text="🔍 FILTRAR PACIENTES",
+            font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"),
+            text_color=self.COLOR_ACCENT,
+        ).pack(side="left", padx=(0, 12))
 
-        Lee el criterio del dropdown y el texto del campo de búsqueda,
-        luego llama al controlador correspondiente.
-        Si el campo está vacío, muestra todos los resultados.
-        """
-        criterio_texto = self.variable_criterio_busqueda.get()
-        clave_criterio = next(
-            (clave for clave, label in self.CRITERIOS if label == criterio_texto),
-            "todos",
+        # Checkboxes
+        self.filtro_activos = {
+            "cedula": ctk.BooleanVar(value=False),
+            "nombre": ctk.BooleanVar(value=True),
+            "apellido": ctk.BooleanVar(value=True),
+            "lugar_nacimiento": ctk.BooleanVar(value=False),
+            "fecha_nacimiento": ctk.BooleanVar(value=False),
+        }
+        
+        checkboxes = [
+            ("cedula", "Cédula"),
+            ("nombre", "Nombres"),
+            ("apellido", "Apellidos"),
+            ("lugar_nacimiento", "Lugar Nac."),
+            ("fecha_nacimiento", "Fecha Nac."),
+        ]
+        
+        for clave, etiqueta in checkboxes:
+            cb = ctk.CTkCheckBox(
+                fila_cabecera, text=etiqueta,
+                variable=self.filtro_activos[clave],
+                font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA),
+                checkbox_width=16, checkbox_height=16,
+                border_width=2, corner_radius=4,
+                fg_color=self.COLOR_ACCENT, hover_color=self.COLOR_ACCENT_HOVER,
+                text_color=self.COLOR_TEXT,
+                command=self._actualizar_campos_filtros,
+            )
+            cb.pack(side="left", padx=8)
+
+        # Botón Nuevo Ingreso a la extrema derecha
+        ctk.CTkButton(
+            fila_cabecera, text="+ Nuevo Ingreso", width=120, height=28, corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA, weight="bold"),
+            fg_color=self.COLOR_SUCCESS, hover_color="#00B377",
+            text_color="#FFF", command=self._nuevo_ingreso,
+        ).pack(side="right", padx=(10, 0))
+
+        # Contenedor dinámico para los campos de entrada
+        self.contenedor_campos_filtros = ctk.CTkFrame(self.panel_busqueda_filtros, fg_color="transparent")
+        self.contenedor_campos_filtros.pack(fill="x", padx=12, pady=(2, 6))
+        
+        # Botones de acción del panel
+        fila_botones = ctk.CTkFrame(self.panel_busqueda_filtros, fg_color="transparent")
+        fila_botones.pack(fill="x", padx=12, pady=(2, 10))
+        
+        ctk.CTkButton(
+            fila_botones, text="Aplicar Filtros", width=120, height=28, corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA, weight="bold"),
+            fg_color=self.COLOR_ACCENT, hover_color=self.COLOR_ACCENT_HOVER,
+            text_color="#FFF", command=self._ejecutar_busqueda_avanzada,
+        ).pack(side="right", padx=(6, 0))
+
+        ctk.CTkButton(
+            fila_botones, text="Limpiar Filtros", width=110, height=28, corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA, weight="bold"),
+            fg_color=self.COLOR_ENTRY_BG, hover_color=self.COLOR_ENTRY_BORDER,
+            text_color=self.COLOR_TEXT, command=self._limpiar_filtros,
+        ).pack(side="right")
+        
+        self.entradas_filtros = {}
+
+    def _actualizar_campos_filtros(self):
+        """Crea o destruye dinámicamente los campos de entrada según las checkboxes activas."""
+        # Limpiar entradas anteriores
+        for widget in self.contenedor_campos_filtros.winfo_children():
+            widget.destroy()
+        self.entradas_filtros.clear()
+
+        # Grid config
+        self.contenedor_campos_filtros.grid_columnconfigure((0, 1, 2, 3), weight=1, minsize=100)
+        
+        col_actual = 0
+        row_actual = 0
+        
+        # Creamos entradas según checkboxes activadas
+        if self.filtro_activos["cedula"].get():
+            self._crear_campo_filtro_texto("cedula", "Cédula:", col_actual, row_actual)
+            col_actual += 1
+            
+        if self.filtro_activos["nombre"].get():
+            self._crear_campo_filtro_texto("nombre", "Nombres:", col_actual, row_actual)
+            col_actual += 1
+            if col_actual > 3:
+                col_actual = 0
+                row_actual += 1
+                
+        if self.filtro_activos["apellido"].get():
+            self._crear_campo_filtro_texto("apellido", "Apellidos:", col_actual, row_actual)
+            col_actual += 1
+            if col_actual > 3:
+                col_actual = 0
+                row_actual += 1
+
+        if self.filtro_activos["lugar_nacimiento"].get():
+            self._crear_campo_filtro_texto("lugar_nacimiento", "Lugar Nac.:", col_actual, row_actual)
+            col_actual += 1
+            if col_actual > 3:
+                col_actual = 0
+                row_actual += 1
+
+        if self.filtro_activos["fecha_nacimiento"].get():
+            self._crear_campo_filtro_fecha(col_actual, row_actual)
+            
+        self._aplicar_estilo_seleccion_inputs()
+
+    def _crear_campo_filtro_texto(self, clave, etiqueta, col, row):
+        marco_campo = ctk.CTkFrame(self.contenedor_campos_filtros, fg_color="transparent")
+        marco_campo.grid(row=row, column=col, sticky="ew", padx=6, pady=4)
+        
+        ctk.CTkLabel(
+            marco_campo, text=etiqueta,
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA, weight="bold"),
+            text_color=self.COLOR_TEXT_SEC, anchor="w"
+        ).pack(fill="x", padx=2)
+        
+        entrada = ctk.CTkEntry(
+            marco_campo, placeholder_text=f"Filtrar por {etiqueta[:-1].lower()}...",
+            height=28, corner_radius=6,
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA),
+            fg_color=self.COLOR_ENTRY_BG, border_color=self.COLOR_ENTRY_BORDER,
+            text_color=self.COLOR_TEXT,
+            placeholder_text_color=self.COLOR_TEXT_SEC,
         )
-        valor = self.entrada_busqueda.get().strip()
+        entrada.pack(fill="x", expand=True)
+        entrada.bind("<KeyRelease>", lambda e: self._ejecutar_busqueda_avanzada_debounce())
+        self.entradas_filtros[clave] = entrada
+        try:
+            entrada._entry.configure(selectforeground="white", selectbackground=self.COLOR_ACCENT)
+        except Exception:
+            pass
 
-        # Si no hay texto, mostrar todos
-        if not valor:
+    def _crear_campo_filtro_fecha(self, col, row):
+        # La fecha abarca 1 columna para mantener simetría en el grid
+        marco_campo = ctk.CTkFrame(self.contenedor_campos_filtros, fg_color="transparent")
+        marco_campo.grid(row=row, column=col, sticky="ew", padx=6, pady=4)
+        
+        ctk.CTkLabel(
+            marco_campo, text="Fecha Nacimiento:",
+            font=ctk.CTkFont(family="Segoe UI", size=self.F_ETIQUETA, weight="bold"),
+            text_color=self.COLOR_TEXT_SEC, anchor="w"
+        ).pack(fill="x", padx=2)
+        
+        self.entrada_fecha_cal = CampoFecha(
+            marco_campo,
+            tema={
+                "entrada_fondo": self.COLOR_ENTRY_BG,
+                "entrada_borde": self.COLOR_ENTRY_BORDER,
+                "texto": self.COLOR_TEXT,
+                "texto_secundario": self.COLOR_TEXT_SEC,
+                "acento": self.COLOR_ACCENT,
+                "acento_hover": self.COLOR_ACCENT_HOVER,
+                "panel": self.COLOR_PANEL,
+                "error": self.COLOR_ERROR,
+            },
+            fuente_tamano={"base": self.F_ETIQUETA}
+        )
+        self.entrada_fecha_cal.pack(fill="x", expand=True)
+        self.entrada_fecha_cal.entrada_fecha.bind("<KeyRelease>", lambda e: self._ejecutar_busqueda_avanzada_debounce())
+        try:
+            self.entrada_fecha_cal.entrada_fecha._entry.configure(selectforeground="white", selectbackground=self.COLOR_ACCENT)
+        except Exception:
+            pass
+
+    def _ejecutar_busqueda_avanzada(self):
+        """Recopila filtros activos del panel y ejecuta la búsqueda combinada."""
+        filtros = {}
+        
+        if self.filtro_activos["cedula"].get() and "cedula" in self.entradas_filtros:
+            filtros["cedula"] = self.entradas_filtros["cedula"].get().strip()
+            
+        if self.filtro_activos["nombre"].get() and "nombre" in self.entradas_filtros:
+            filtros["nombre"] = self.entradas_filtros["nombre"].get().strip()
+            
+        if self.filtro_activos["apellido"].get() and "apellido" in self.entradas_filtros:
+            filtros["apellido"] = self.entradas_filtros["apellido"].get().strip()
+            
+        if self.filtro_activos["lugar_nacimiento"].get() and "lugar_nacimiento" in self.entradas_filtros:
+            filtros["lugar_nacimiento"] = self.entradas_filtros["lugar_nacimiento"].get().strip()
+            
+        if self.filtro_activos["fecha_nacimiento"].get() and hasattr(self, "entrada_fecha_cal"):
+            filtros["fecha_nacimiento"] = self.entrada_fecha_cal.obtener_fecha().strip()
+
+        # Si no hay ningún filtro con valores reales ingresados, mostrar todos
+        valores_ingresados = False
+        for k, v in filtros.items():
+            if v:
+                valores_ingresados = True
+
+        if not valores_ingresados:
             self._buscar_todos()
             return
 
-        exito, resultado = self.controlador_busqueda.buscar(clave_criterio, valor)
-        if exito:
-            self._renderizar_resultados(resultado)
-            self.etiqueta_mensaje.configure(text="")
-        else:
-            self._mostrar_mensaje(str(resultado), True)
+        try:
+            exito, resultado = self.controlador_busqueda.buscar_multicriterio(filtros)
+            if exito:
+                self.pagina_actual = 1
+                self._todos_los_registros = resultado
+                self._actualizar_tabla_paginada()
+                self.etiqueta_mensaje.configure(text="")
+            else:
+                self._mostrar_mensaje(str(resultado), True)
+        except Exception as error:
+            self._mostrar_mensaje(f"Error al buscar: {error}", True)
 
-    def _busqueda_en_vivo(self, _evento=None):
-        """Búsqueda en tiempo real con debounce de 300ms.
-
-        Cancela el timer anterior y programa uno nuevo. Esto evita
-        hacer consultas a la BD en cada tecla presionada.
-        """
+    def _ejecutar_busqueda_avanzada_debounce(self):
+        """Ejecuta la búsqueda avanzada con un debounce de 300ms."""
         if self._id_debounce_busqueda:
             self.after_cancel(self._id_debounce_busqueda)
-        self._id_debounce_busqueda = self.after(300, self._ejecutar_busqueda)
+        self._id_debounce_busqueda = self.after(300, self._ejecutar_busqueda_avanzada)
+
+    def _limpiar_filtros(self):
+        """Limpia todos los campos del panel de filtros y los restablece a los valores por defecto."""
+        for clave, var in self.filtro_activos.items():
+            if clave in ("nombre", "apellido"):
+                var.set(True)
+            else:
+                var.set(False)
+        self._actualizar_campos_filtros()
+        self._buscar_todos()
+
+    def _actualizar_tabla_paginada(self):
+        """Calcula el slice de registros correspondiente a la página actual y actualiza la UI de paginación."""
+        registros = getattr(self, "_todos_los_registros", [])
+        total_registros = len(registros)
+        limite = self.registros_por_pagina
+        
+        # Calcular total de páginas
+        total_paginas = max(1, (total_registros + limite - 1) // limite)
+        
+        # Validar página actual
+        if self.pagina_actual > total_paginas:
+            self.pagina_actual = total_paginas
+        if self.pagina_actual < 1:
+            self.pagina_actual = 1
+            
+        # Calcular límites del slice
+        inicio = (self.pagina_actual - 1) * limite
+        fin = min(inicio + limite, total_registros)
+        
+        # Renderizar solo los registros de la página activa
+        slice_registros = registros[inicio:fin]
+        self._renderizar_resultados(slice_registros)
+        
+        # Re-configurar etiqueta de conteo para mostrar conteo total
+        self.etiqueta_conteo.configure(
+            text=f"{total_registros} resultado{'s' if total_registros != 1 else ''}"
+        )
+        
+        # Actualizar los controles de paginación
+        self.label_info_paginacion.configure(
+            text=f"Pág. {self.pagina_actual} de {total_paginas} ({total_registros} registros)"
+        )
+        
+        # Habilitar/deshabilitar botones
+        if self.pagina_actual == 1:
+            self.btn_pag_anterior.configure(state="disabled", fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT_SEC)
+        else:
+            self.btn_pag_anterior.configure(state="normal", fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT)
+            
+        if self.pagina_actual == total_paginas or total_registros == 0:
+            self.btn_pag_siguiente.configure(state="disabled", fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT_SEC)
+        else:
+            self.btn_pag_siguiente.configure(state="normal", fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT)
+
+    def _pag_anterior(self):
+        if self.pagina_actual > 1:
+            self.pagina_actual -= 1
+            self._actualizar_tabla_paginada()
+            
+    def _pag_siguiente(self):
+        self.pagina_actual += 1
+        self._actualizar_tabla_paginada()
 
     def _renderizar_resultados(self, registros):
         """Renderiza los resultados de búsqueda como filas en la tabla.
@@ -738,21 +978,23 @@ class PacientesView(ctk.CTkFrame):
 
         for indice, registro in enumerate(registros):
             color_fila = self.COLOR_ROW_ALT if indice % 2 == 0 else "transparent"
-            marco_fila = ctk.CTkFrame(
+            
+            # Fila contenedora con dimensiones fijas y alineación perfecta (ocupa la columna 0 completa)
+            fondo_fila = ctk.CTkFrame(
                 self.tabla_scroll, fg_color=color_fila,
-                corner_radius=3, height=28,
+                corner_radius=4, height=32,
             )
-            marco_fila.grid(
+            fondo_fila.grid(
                 row=indice + 1, column=0,
-                columnspan=len(self.NOMBRES_COLUMNAS),
+                columnspan=1,
                 sticky="ew", pady=1,
             )
-            marco_fila.grid_propagate(False)
+            fondo_fila.grid_propagate(False)
+            self._widgets_filas_tabla.append(fondo_fila)
 
-            for indice_col, ancho in enumerate(self.ANCHOS_COLUMNAS):
-                marco_fila.grid_columnconfigure(
-                    indice_col, weight=1, minsize=ancho
-                )
+            # Configurar las columnas de la fila usando las mismas proporciones de la cabecera
+            for col_idx, peso in enumerate(self.PESOS_COLUMNAS):
+                fondo_fila.grid_columnconfigure(col_idx, weight=peso, uniform="columna_tabla")
 
             # Construir nombre completo
             nombre_completo = registro.nombre1
@@ -769,13 +1011,15 @@ class PacientesView(ctk.CTkFrame):
                 registro.num_historia, None,
             ]
 
+            elementos_fila = [fondo_fila]
+
             for indice_col, valor_celda in enumerate(valores_columna):
-                if indice_col == 5:  # Columna Color (indicador visual)
+                if indice_col == 5:  # Columna Color (indicador visual + nombre)
                     marco_color = ctk.CTkFrame(
-                        marco_fila, fg_color="transparent"
+                        fondo_fila, fg_color="transparent", width=10
                     )
                     marco_color.grid(
-                        row=0, column=indice_col, sticky="ew", padx=4, pady=2
+                        row=0, column=indice_col, sticky="ew", padx=6, pady=4
                     )
                     indicador_color = ctk.CTkFrame(
                         marco_color, fg_color=hex_color,
@@ -783,47 +1027,44 @@ class PacientesView(ctk.CTkFrame):
                     )
                     indicador_color.pack(side="left", padx=(0, 3))
                     indicador_color.pack_propagate(False)
+                    
                     etiqueta_color = ctk.CTkLabel(
-                        marco_color, text=registro.color or "",
+                        marco_color, text=registro.color or "N/A",
                         font=ctk.CTkFont(family="Segoe UI", size=self.F_TABLA),
-                        text_color=self.COLOR_TEXT, anchor="w",
+                        text_color=self.COLOR_TEXT_SEC,
+                        width=10,
                     )
                     etiqueta_color.pack(side="left")
-                    marco_color.bind(
-                        "<Button-1>",
-                        lambda _, r=registro: self._seleccionar_paciente(r),
-                    )
-                    etiqueta_color.bind(
-                        "<Button-1>",
-                        lambda _, r=registro: self._seleccionar_paciente(r),
-                    )
+                    elementos_fila.extend([marco_color, etiqueta_color, indicador_color])
                 else:
-                    etiqueta_celda = ctk.CTkLabel(
-                        marco_fila, text=str(valor_celda or ""),
+                    celda = ctk.CTkLabel(
+                        fondo_fila, text=str(valor_celda or ""),
                         font=ctk.CTkFont(family="Segoe UI", size=self.F_TABLA),
                         text_color=self.COLOR_TEXT, anchor="w",
+                        width=10,
                     )
-                    etiqueta_celda.grid(
-                        row=0, column=indice_col,
-                        sticky="ew", padx=6, pady=3,
+                    celda.grid(
+                        row=0, column=indice_col, sticky="ew", padx=8, pady=4
                     )
-                    etiqueta_celda.bind(
-                        "<Button-1>",
-                        lambda _, r=registro: self._seleccionar_paciente(r),
-                    )
+                    elementos_fila.append(celda)
 
-            marco_fila.bind(
-                "<Button-1>",
-                lambda _, r=registro: self._seleccionar_paciente(r),
-            )
-            self._widgets_filas_tabla.append(marco_fila)
+            # Efectos hover y selección
+            def on_enter(e, f=fondo_fila):
+                f.configure(fg_color=self.COLOR_ENTRY_BORDER)
+            def on_leave(e, f=fondo_fila, c=color_fila):
+                f.configure(fg_color=c)
+
+            for elemento in elementos_fila:
+                elemento.bind("<Enter>", on_enter)
+                elemento.bind("<Leave>", on_leave)
+                elemento.bind("<Button-1>", lambda e, r=registro: self._seleccionar_paciente(r))
 
     def _renderizar_sin_resultados(self):
         """Muestra un mensaje cuando no hay resultados, con botón para registrar."""
         marco_vacio = ctk.CTkFrame(self.tabla_scroll, fg_color="transparent")
         marco_vacio.grid(
             row=1, column=0,
-            columnspan=len(self.NOMBRES_COLUMNAS),
+            columnspan=1,
             pady=30, sticky="ew",
         )
         ctk.CTkLabel(
@@ -1167,6 +1408,42 @@ class PacientesView(ctk.CTkFrame):
         if not texto:
             color = self.COLOR_TEXT_SEC
         self.etiqueta_mensaje.configure(text=texto, text_color=color)
+
+    def _aplicar_estilo_seleccion_inputs(self):
+        """Aplica color de selección blanco sobre fondo azul accent a todos los inputs de texto de forma segura."""
+        entradas = []
+        
+        # Obtener de manera segura los atributos si ya han sido inicializados
+        for attr in ["entrada_numero_cedula", "entrada_num_historia"]:
+            val = getattr(self, attr, None)
+            if val:
+                entradas.append(val)
+                
+        entradas_formulario = getattr(self, "entradas_formulario", None)
+        if entradas_formulario:
+            entradas.extend(entradas_formulario.values())
+            
+        campo_fecha_nacimiento = getattr(self, "campo_fecha_nacimiento", None)
+        if campo_fecha_nacimiento and hasattr(campo_fecha_nacimiento, "entrada_fecha"):
+            entradas.append(campo_fecha_nacimiento.entrada_fecha)
+            
+        entradas_filtros = getattr(self, "entradas_filtros", None)
+        if entradas_filtros:
+            entradas.extend(entradas_filtros.values())
+            
+        entrada_fecha_cal = getattr(self, "entrada_fecha_cal", None)
+        if entrada_fecha_cal and hasattr(entrada_fecha_cal, "entrada_fecha"):
+            entradas.append(entrada_fecha_cal.entrada_fecha)
+            
+        for entrada in entradas:
+            if entrada and hasattr(entrada, "_entry"):
+                try:
+                    entrada._entry.configure(
+                        selectforeground="white",
+                        selectbackground=self.COLOR_ACCENT
+                    )
+                except Exception:
+                    pass
 
     @staticmethod
     def _obtener_hex_color(num_historia: str) -> str:

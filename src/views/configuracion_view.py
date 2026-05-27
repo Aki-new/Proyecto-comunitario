@@ -95,6 +95,7 @@ class ConfiguracionView(ctk.CTkFrame):
         self._crear_seccion_tema(scroll)
         self._crear_seccion_fuente(scroll)
         self._crear_seccion_modo_historia(scroll)
+        self._crear_seccion_paginacion(scroll)
         self._crear_boton_guardar(scroll)
 
     # ── Encabezado ────────────────────────────────────────────────────
@@ -137,9 +138,10 @@ class ConfiguracionView(ctk.CTkFrame):
         self.selector_tema = ctk.CTkSegmentedButton(
             card, values=["Oscuro", "Claro", "Personalizado"],
             font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=self.C_ENTRADA,
             selected_color=self.C_ACENTO, selected_hover_color=self.C_ACENTO_HOVER,
             unselected_color=self.C_ENTRADA, unselected_hover_color=self.C_BORDE,
-            text_color="#FFFFFF", command=self._al_cambiar_tema,
+            text_color=self.C_TEXTO, command=self._al_cambiar_tema,
         )
         self.selector_tema.set(tema_label)
         self.selector_tema.pack(fill="x", padx=20, pady=(0, 12))
@@ -260,9 +262,10 @@ class ConfiguracionView(ctk.CTkFrame):
         self.selector_tamano = ctk.CTkSegmentedButton(
             card, values=["Pequeño", "Normal", "Grande", "Muy Grande"],
             font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=self.C_ENTRADA,
             selected_color=self.C_ACENTO, selected_hover_color=self.C_ACENTO_HOVER,
             unselected_color=self.C_ENTRADA, unselected_hover_color=self.C_BORDE,
-            text_color="#FFFFFF", command=self._al_cambiar_fuente,
+            text_color=self.C_TEXTO, command=self._al_cambiar_fuente,
         )
         self.selector_tamano.set(tamano_label)
         self.selector_tamano.pack(fill="x", padx=20, pady=(0, 12))
@@ -309,9 +312,10 @@ class ConfiguracionView(ctk.CTkFrame):
         self.selector_modo = ctk.CTkSegmentedButton(
             card, values=["Manual", "Automático"],
             font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=self.C_ENTRADA,
             selected_color=self.C_ACENTO, selected_hover_color=self.C_ACENTO_HOVER,
             unselected_color=self.C_ENTRADA, unselected_hover_color=self.C_BORDE,
-            text_color="#FFFFFF", command=self._al_cambiar_modo,
+            text_color=self.C_TEXTO, command=self._al_cambiar_modo,
         )
         self.selector_modo.set(modo_label)
         self.selector_modo.pack(fill="x", padx=20, pady=(0, 12))
@@ -338,6 +342,45 @@ class ConfiguracionView(ctk.CTkFrame):
             "Automático": "El sistema generará el siguiente número secuencial",
         }
         self.label_desc_modo.configure(text=descs.get(valor, ""))
+
+    def _crear_seccion_paginacion(self, parent):
+        card = ctk.CTkFrame(
+            parent, fg_color=self.C_PANEL, corner_radius=12,
+            border_width=1, border_color=self.C_BORDE,
+        )
+        card.pack(fill="x", pady=(0, 14))
+
+        ctk.CTkLabel(
+            card, text="📄 Registros por Página",
+            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
+            text_color=self.C_TEXTO, anchor="w",
+        ).pack(fill="x", padx=20, pady=(16, 10))
+
+        limite_actual = str(self.config.registros_por_pagina)
+        if limite_actual not in ["10", "20", "50", "100"]:
+            limite_actual = "20"
+
+        self.selector_paginacion = ctk.CTkSegmentedButton(
+            card, values=["10", "20", "50", "100"],
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+            fg_color=self.C_ENTRADA,
+            selected_color=self.C_ACENTO, selected_hover_color=self.C_ACENTO_HOVER,
+            unselected_color=self.C_ENTRADA, unselected_hover_color=self.C_BORDE,
+            text_color=self.C_TEXTO,
+        )
+        self.selector_paginacion.set(limite_actual)
+        self.selector_paginacion.pack(fill="x", padx=20, pady=(0, 12))
+
+        marco = ctk.CTkFrame(
+            card, fg_color=self.C_ENTRADA, corner_radius=8,
+            border_width=1, border_color=self.C_BORDE,
+        )
+        marco.pack(fill="x", padx=20, pady=(0, 16))
+        ctk.CTkLabel(
+            marco, text="Establece el número máximo de registros a mostrar por página en los listados.",
+            font=ctk.CTkFont(family="Segoe UI", size=11),
+            text_color=self.C_TEXTO_SEC, anchor="w", wraplength=500,
+        ).pack(fill="x", padx=14, pady=10)
 
     # ══════════════════════════════════════════════════════════════════
     #  GUARDAR
@@ -368,6 +411,7 @@ class ConfiguracionView(ctk.CTkFrame):
             tema_valor = self._MAPA_TEMAS.get(self.selector_tema.get(), "oscuro")
             tamano_valor = self._MAPA_TAMANOS.get(self.selector_tamano.get(), "normal")
             modo_valor = self._MAPA_MODO.get(self.selector_modo.get(), "manual")
+            paginacion_valor = int(self.selector_paginacion.get())
 
             colores_pers = self.config.colores_personalizados
             if tema_valor == "personalizado":
@@ -384,6 +428,7 @@ class ConfiguracionView(ctk.CTkFrame):
                 tema=tema_valor,
                 tamano_fuente=tamano_valor,
                 modo_num_historia=modo_valor,
+                registros_por_pagina=paginacion_valor,
                 colores_personalizados=colores_pers,
             )
             guardar_config(nueva)

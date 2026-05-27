@@ -68,3 +68,18 @@ class BusquedaController:
     def obtener_todos(self) -> list[TarjetaSalida]:
         """Retorna todos los registros de la vista."""
         return self.busqueda_dao.obtener_todos()
+
+    def buscar_multicriterio(self, filtros: dict) -> tuple[bool, str | list[TarjetaSalida]]:
+        """Busca registros combinando múltiples criterios (AND).
+
+        Args:
+            filtros: Dict con filtros a aplicar.
+
+        Returns:
+            Tupla (éxito, resultados | mensaje_error).
+        """
+        try:
+            resultados = self.busqueda_dao.buscar_multicriterio(filtros)
+            return True, resultados
+        except Exception as e:
+            return False, f"Error al realizar la búsqueda multi-criterio: {str(e)}"
