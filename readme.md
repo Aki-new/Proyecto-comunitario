@@ -7,3 +7,6 @@ INSTRUCCIONES PARA INICIAR EL PROYECTO
 5- Activar el entorno con ".venv\Scripts\activate"
 6- Instalar las dependencias con "pip install -r requirements.txt"
 7- Comprobar con "pip list"
+
+Nota: Se iran añadiendo nuevas dependencias, recomendamos reinstalar 
+dependencias siempre que se traigan cambios
