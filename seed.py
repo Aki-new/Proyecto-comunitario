@@ -166,6 +166,32 @@ def insertar_pacientes_prueba(conn: sqlite3.Connection):
         print(f"  [OK] Tarjeta '{num_historia}' -> {nombre_color} para '{label}'.")
 
 
+# ── Servicios hospitalarios ───────────────────────────────────────
+SERVICIOS_HOSPITAL = [
+    ("Obstetricia", 20),
+    ("Cirugía", 8),
+    ("Medicina", 8),
+    ("Pediatría", 13),
+    ("Emergencia Médica", 8),
+    ("Emergencia Pediátrica", 9),
+]
+
+
+def insertar_servicios(conn: sqlite3.Connection):
+    """Inserta los 6 servicios hospitalarios con su cantidad de camas."""
+    cursor = conn.cursor()
+    for nombre, camas in SERVICIOS_HOSPITAL:
+        cursor.execute("SELECT id FROM servicios WHERE nombre = ?", (nombre,))
+        if cursor.fetchone():
+            print(f"  [SKIP] Servicio '{nombre}' ya existe.")
+        else:
+            cursor.execute(
+                "INSERT INTO servicios (nombre, total_camas, estado) VALUES (?, ?, 1)",
+                (nombre, camas),
+            )
+            print(f"  [OK] Servicio '{nombre}' ({camas} camas) creado.")
+
+
 def main():
     print("=" * 50)
     print("  SEED -- Datos de prueba")
@@ -187,6 +213,9 @@ def main():
 
         print("\n> Insertando pacientes de prueba...")
         insertar_pacientes_prueba(conn)
+
+        print("\n> Insertando servicios hospitalarios...")
+        insertar_servicios(conn)
 
         conn.commit()
         print("\n" + "=" * 50)

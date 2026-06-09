@@ -109,5 +109,5 @@ class ConexionDB:
     def obtener_conexion(self):
         # Asegurar de que la base de datos se cree en la carpeta adecuada
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-        conn = db.connect(self.db_path)
+        conn = db.connect(self.db_path, check_same_thread=False)
         return LoggingConnection(conn)

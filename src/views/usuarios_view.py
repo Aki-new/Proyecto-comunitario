@@ -17,6 +17,7 @@ Relación con otros módulos:
 
 import customtkinter as ctk
 from controllers.usuario_controller import UsuarioController
+from utils.hilo_trabajo import ejecutar_en_hilo
 
 
 class UsuariosView(ctk.CTkFrame):
@@ -382,12 +383,15 @@ class UsuariosView(ctk.CTkFrame):
     # ══════════════════════════════════════════════════════════════════
 
     def _cargar_datos_tabla(self):
-        """Obtiene la lista de usuarios desde el controlador y renderiza la tabla."""
-        try:
-            usuarios = self.controlador.listar_usuarios()
-            self._renderizar_tabla(usuarios)
-        except Exception as error:
-            self._mostrar_mensaje(f"Error al cargar usuarios: {error}", es_error=True)
+        """Obtiene la lista de usuarios en un hilo secundario y renderiza la tabla."""
+        ejecutar_en_hilo(
+            self,
+            tarea=self.controlador.listar_usuarios,
+            callback_exito=self._renderizar_tabla,
+            callback_error=lambda e: self._mostrar_mensaje(
+                f"Error al cargar usuarios: {e}", es_error=True
+            ),
+        )
 
     def _renderizar_tabla(self, usuarios):
         """Limpia y redibuja las filas de la tabla con los usuarios dados.
@@ -491,47 +495,63 @@ class UsuariosView(ctk.CTkFrame):
     def _guardar_usuario(self):
         """Registra o actualiza un usuario según el estado del formulario.
 
-        Si id_usuario_seleccionado es None, crea un nuevo usuario.
-        Si tiene valor, actualiza el usuario existente.
+        La operación de BD se ejecuta en un hilo secundario.
         """
         datos = self._obtener_datos_formulario()
         if datos is None:
             return
 
-        if self.id_usuario_seleccionado is None:
-            exito, mensaje = self.controlador.registrar_usuario(datos)
-        else:
-            exito, mensaje = self.controlador.actualizar_usuario(
-                self.id_usuario_seleccionado, datos
-            )
+        id_sel = self.id_usuario_seleccionado
 
-        if exito:
-            self._mostrar_mensaje(mensaje, es_error=False)
-            self._limpiar_formulario()
-            self.id_usuario_seleccionado = None
-            self._cargar_datos_tabla()
-        else:
-            self._mostrar_mensaje(mensaje, es_error=True)
+        def _operacion():
+            if id_sel is None:
+                return self.controlador.registrar_usuario(datos)
+            else:
+                return self.controlador.actualizar_usuario(id_sel, datos)
+
+        def _on_guardado(resultado):
+            exito, mensaje = resultado
+            if exito:
+                self._mostrar_mensaje(mensaje, es_error=False)
+                self._limpiar_formulario()
+                self.id_usuario_seleccionado = None
+                self._cargar_datos_tabla()
+            else:
+                self._mostrar_mensaje(mensaje, es_error=True)
+
+        ejecutar_en_hilo(
+            self,
+            tarea=_operacion,
+            callback_exito=_on_guardado,
+            callback_error=lambda e: self._mostrar_mensaje(f"Error: {e}", es_error=True),
+        )
 
     def _eliminar_usuario(self):
-        """Desactiva (borrado lógico) el usuario seleccionado."""
+        """Desactiva (borrado lógico) el usuario seleccionado en un hilo secundario."""
         if self.id_usuario_seleccionado is None:
             self._mostrar_mensaje(
                 "Seleccione un usuario de la tabla para eliminar.", es_error=True
             )
             return
 
-        exito, mensaje = self.controlador.eliminar_usuario(
-            self.id_usuario_seleccionado
-        )
+        id_sel = self.id_usuario_seleccionado
 
-        if exito:
-            self._mostrar_mensaje(mensaje, es_error=False)
-            self._limpiar_formulario()
-            self.id_usuario_seleccionado = None
-            self._cargar_datos_tabla()
-        else:
-            self._mostrar_mensaje(mensaje, es_error=True)
+        def _on_eliminado(resultado):
+            exito, mensaje = resultado
+            if exito:
+                self._mostrar_mensaje(mensaje, es_error=False)
+                self._limpiar_formulario()
+                self.id_usuario_seleccionado = None
+                self._cargar_datos_tabla()
+            else:
+                self._mostrar_mensaje(mensaje, es_error=True)
+
+        ejecutar_en_hilo(
+            self,
+            tarea=lambda: self.controlador.eliminar_usuario(id_sel),
+            callback_exito=_on_eliminado,
+            callback_error=lambda e: self._mostrar_mensaje(f"Error: {e}", es_error=True),
+        )
 
     # ══════════════════════════════════════════════════════════════════
     #  CAMBIO DE CONTRASEÑA

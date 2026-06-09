@@ -32,6 +32,7 @@ from models.num_historia_utils import (
     MAPA_COLORES,
 )
 from views.calendario_widget import CampoFecha
+from utils.hilo_trabajo import ejecutar_en_hilo
 
 
 class PacientesView(ctk.CTkFrame):
@@ -659,13 +660,22 @@ class PacientesView(ctk.CTkFrame):
     # ══════════════════════════════════════════════════════════════════
 
     def _buscar_todos(self):
-        """Ejecuta una búsqueda sin filtros (muestra todos los pacientes) y los pagina."""
-        try:
-            self._todos_los_registros = self.controlador_busqueda.obtener_todos()
-            self.pagina_actual = 1
-            self._actualizar_tabla_paginada()
-        except Exception as error:
-            self._mostrar_mensaje(f"Error: {error}", True)
+        """Ejecuta una búsqueda sin filtros (muestra todos los pacientes) y los pagina.
+
+        La consulta a la BD se ejecuta en un hilo secundario para no bloquear la UI.
+        """
+        ejecutar_en_hilo(
+            self,
+            tarea=self.controlador_busqueda.obtener_todos,
+            callback_exito=self._on_datos_cargados,
+            callback_error=lambda e: self._mostrar_mensaje(f"Error: {e}", True),
+        )
+
+    def _on_datos_cargados(self, registros):
+        """Callback invocado en el hilo principal con los resultados de búsqueda."""
+        self._todos_los_registros = registros
+        self.pagina_actual = 1
+        self._actualizar_tabla_paginada()
 
     def _construir_panel_filtros(self):
         """Construye los elementos del panel de búsqueda y filtros unificado."""
@@ -844,7 +854,10 @@ class PacientesView(ctk.CTkFrame):
             pass
 
     def _ejecutar_busqueda_avanzada(self):
-        """Recopila filtros activos del panel y ejecuta la búsqueda combinada."""
+        """Recopila filtros activos del panel y ejecuta la búsqueda combinada.
+
+        La consulta se ejecuta en un hilo secundario para no bloquear la UI.
+        """
         filtros = {}
         
         if self.filtro_activos["cedula"].get() and "cedula" in self.entradas_filtros:
@@ -872,17 +885,25 @@ class PacientesView(ctk.CTkFrame):
             self._buscar_todos()
             return
 
-        try:
-            exito, resultado = self.controlador_busqueda.buscar_multicriterio(filtros)
-            if exito:
-                self.pagina_actual = 1
-                self._todos_los_registros = resultado
-                self._actualizar_tabla_paginada()
-                self.etiqueta_mensaje.configure(text="")
-            else:
-                self._mostrar_mensaje(str(resultado), True)
-        except Exception as error:
-            self._mostrar_mensaje(f"Error al buscar: {error}", True)
+        # Ejecutar búsqueda en hilo secundario
+        filtros_copia = dict(filtros)
+        ejecutar_en_hilo(
+            self,
+            tarea=lambda: self.controlador_busqueda.buscar_multicriterio(filtros_copia),
+            callback_exito=self._on_busqueda_avanzada_completada,
+            callback_error=lambda e: self._mostrar_mensaje(f"Error al buscar: {e}", True),
+        )
+
+    def _on_busqueda_avanzada_completada(self, resultado):
+        """Callback invocado en el hilo principal con los resultados de búsqueda avanzada."""
+        exito, datos = resultado
+        if exito:
+            self.pagina_actual = 1
+            self._todos_los_registros = datos
+            self._actualizar_tabla_paginada()
+            self.etiqueta_mensaje.configure(text="")
+        else:
+            self._mostrar_mensaje(str(datos), True)
 
     def _ejecutar_busqueda_avanzada_debounce(self):
         """Ejecuta la búsqueda avanzada con un debounce de 300ms."""
@@ -1162,81 +1183,90 @@ class PacientesView(ctk.CTkFrame):
 
         Si id_paciente_seleccionado es None, registra un nuevo paciente
         con tarjeta. Si tiene valor, actualiza el paciente y su tarjeta.
+        La operación de BD se ejecuta en un hilo secundario.
         """
         datos = self._recoger_datos_formulario()
         if datos is None:
             return
 
         datos_paciente, num_historia = datos
-        try:
-            if self.id_paciente_seleccionado is not None:
-                # Modo edición: actualizar paciente + tarjeta
+        id_pac = self.id_paciente_seleccionado
+        id_tarj = self.id_tarjeta_seleccionada
+
+        def _operacion_guardar():
+            if id_pac is not None:
                 exito, mensaje = self.controlador_paciente.actualizar_paciente(
-                    self.id_paciente_seleccionado, datos_paciente
+                    id_pac, datos_paciente
                 )
                 if not exito:
-                    self._mostrar_mensaje(mensaje, True)
-                    return
+                    return (False, mensaje)
 
-                if self.id_tarjeta_seleccionada is not None:
-                    exito_tarjeta, mensaje_tarjeta = (
-                        self.controlador_tarjeta.actualizar_tarjeta(
-                            self.id_tarjeta_seleccionada, num_historia
-                        )
+                if id_tarj is not None:
+                    exito_t, mensaje_t = self.controlador_tarjeta.actualizar_tarjeta(
+                        id_tarj, num_historia
                     )
                 else:
-                    exito_tarjeta, mensaje_tarjeta = (
-                        self.controlador_tarjeta.crear_tarjeta(
-                            self.id_paciente_seleccionado, num_historia
-                        )
+                    exito_t, mensaje_t = self.controlador_tarjeta.crear_tarjeta(
+                        id_pac, num_historia
                     )
 
-                if not exito_tarjeta:
-                    self._mostrar_mensaje(
-                        f"Paciente OK. Tarjeta: {mensaje_tarjeta}", True
-                    )
-                else:
-                    self._mostrar_mensaje(
-                        "Paciente y tarjeta actualizados.", False
-                    )
+                if not exito_t:
+                    return (True, f"Paciente OK. Tarjeta: {mensaje_t}")
+                return (True, "Paciente y tarjeta actualizados.")
             else:
-                # Modo nuevo: registrar paciente + tarjeta
-                exito, mensaje = (
-                    self.controlador_paciente.registrar_paciente_con_tarjeta(
-                        datos_paciente, num_historia
-                    )
+                exito, mensaje = self.controlador_paciente.registrar_paciente_con_tarjeta(
+                    datos_paciente, num_historia
                 )
-                self._mostrar_mensaje(mensaje, not exito)
+                return (exito, mensaje)
 
+        def _on_guardado(resultado):
+            exito, mensaje = resultado
+            self._mostrar_mensaje(mensaje, not exito)
             if exito:
                 self._limpiar_formulario()
                 self.id_paciente_seleccionado = None
                 self.id_tarjeta_seleccionada = None
                 self._buscar_todos()
-        except Exception as error:
-            self._mostrar_mensaje(f"Error: {error}", True)
+
+        ejecutar_en_hilo(
+            self,
+            tarea=_operacion_guardar,
+            callback_exito=_on_guardado,
+            callback_error=lambda e: self._mostrar_mensaje(f"Error: {e}", True),
+        )
 
     def _eliminar_paciente(self):
-        """Desactiva (borrado lógico) el paciente seleccionado y su tarjeta."""
+        """Desactiva (borrado lógico) el paciente seleccionado y su tarjeta.
+
+        La operación se ejecuta en un hilo secundario.
+        """
         if self.id_paciente_seleccionado is None:
             self._mostrar_mensaje(
                 "Seleccione un paciente de la lista primero.", True
             )
             return
-        try:
-            if self.id_tarjeta_seleccionada:
-                self.controlador_tarjeta.eliminar_tarjeta(
-                    self.id_tarjeta_seleccionada
-                )
-            exito, mensaje = self.controlador_paciente.eliminar_paciente(
-                self.id_paciente_seleccionado
-            )
+
+        id_pac = self.id_paciente_seleccionado
+        id_tarj = self.id_tarjeta_seleccionada
+
+        def _operacion_eliminar():
+            if id_tarj:
+                self.controlador_tarjeta.eliminar_tarjeta(id_tarj)
+            return self.controlador_paciente.eliminar_paciente(id_pac)
+
+        def _on_eliminado(resultado):
+            exito, mensaje = resultado
             self._mostrar_mensaje(mensaje, not exito)
             if exito:
                 self._cerrar_formulario()
                 self._buscar_todos()
-        except Exception as error:
-            self._mostrar_mensaje(f"Error: {error}", True)
+
+        ejecutar_en_hilo(
+            self,
+            tarea=_operacion_eliminar,
+            callback_exito=_on_eliminado,
+            callback_error=lambda e: self._mostrar_mensaje(f"Error: {e}", True),
+        )
 
     # ══════════════════════════════════════════════════════════════════
     #  PREVIEW DE COLOR EN TIEMPO REAL

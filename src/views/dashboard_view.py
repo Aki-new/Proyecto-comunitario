@@ -4,11 +4,10 @@ Vista principal del Dashboard — SGI Salud.
 Panel principal con menú lateral de navegación y área de contenido.
 Gestiona la aplicación de temas en caliente y la carga dinámica de módulos.
 
-Cambios v2:
-    - Colores leídos dinámicamente desde config (no hardcodeados).
-    - Método aplicar_tema() reconfigura TODO el dashboard en caliente.
-    - Sidebar con scroll interno para responsive.
-    - Módulos reciben colores + fuentes como parámetros.
+Cambios v3:
+    - Cache de vistas: las vistas se crean una sola vez y se reutilizan
+      al navegar. Solo se destruyen/recrean al guardar configuración.
+    - Nuevo módulo Tarjetero de Ingresos.
 """
 
 import customtkinter as ctk
@@ -18,6 +17,7 @@ from models.tema import obtener_tema, obtener_tamano_fuente
 from views.pacientes_view import PacientesView
 from views.colores_view import ColoresView
 from views.usuarios_view import UsuariosView
+from views.tarjetero_view import TarjeteroView
 from views.configuracion_view import ConfiguracionView
 
 
@@ -39,10 +39,19 @@ class DashboardView(ctk.CTkToplevel):
     MENU_ITEMS = [
         {"texto": "📊  Inicio",          "clave": "inicio"},
         {"texto": "👤  Pacientes",        "clave": "pacientes"},
+        {"texto": "🏥  Tarjetero",        "clave": "tarjetero"},
         {"texto": "🎨  Colores",          "clave": "colores"},
         {"texto": "👥  Usuarios",         "clave": "usuarios"},
         {"texto": "⚙️  Configuración",    "clave": "configuracion"},
     ]
+
+    # Mapa de vistas cacheables (clave → clase). Inicio y Configuración NO se cachean.
+    _VISTA_CLASES = {
+        "pacientes": PacientesView,
+        "tarjetero": TarjeteroView,
+        "colores": ColoresView,
+        "usuarios": UsuariosView,
+    }
 
     def __init__(self, master, usuario: Usuario, on_logout: callable):
         super().__init__(master)
@@ -50,6 +59,10 @@ class DashboardView(ctk.CTkToplevel):
         self.on_logout = on_logout
         self.menu_seleccionado = "inicio"
         self.botones_menu: dict[str, ctk.CTkButton] = {}
+
+        # Cache de vistas: se crean una sola vez y se reutilizan
+        self._cache_vistas: dict[str, ctk.CTkFrame] = {}
+        self._vista_activa: ctk.CTkFrame | None = None
 
         # Cargar config y derivar colores/fuentes
         self.config = cargar_config()
@@ -79,9 +92,8 @@ class DashboardView(ctk.CTkToplevel):
     def aplicar_tema(self, nueva_config: AppConfig):
         """Aplica un nuevo tema en caliente a todo el dashboard.
 
-        Destruye y reconstruye el sidebar completamente para que todos los
-        widgets internos (labels, separadores, scroll, perfil) tomen los
-        nuevos colores. También recarga la vista activa.
+        Invalida el cache de vistas para que se recreen con los nuevos
+        colores/fuentes. Reconstruye el sidebar y recarga la vista activa.
 
         Args:
             nueva_config: Nueva configuración con el tema a aplicar.
@@ -92,6 +104,9 @@ class DashboardView(ctk.CTkToplevel):
 
         # Reconfigurar fondo principal
         self.configure(fg_color=c["fondo"])
+
+        # ── Invalidar cache de vistas (se recrearán con nuevos colores) ──
+        self._invalidar_cache()
 
         # ── Reconstruir sidebar completo ──
         self.sidebar.destroy()
@@ -106,15 +121,15 @@ class DashboardView(ctk.CTkToplevel):
 
         # ── Recargar la vista activa ──
         self._limpiar_contenido()
-        paginas = {
-            "inicio": self._mostrar_pagina_inicio,
-            "pacientes": lambda: self._cargar_modulo_vista(PacientesView),
-            "colores": lambda: self._cargar_modulo_vista(ColoresView),
-            "usuarios": lambda: self._cargar_modulo_vista(UsuariosView),
-            "configuracion": self._mostrar_configuracion,
-        }
-        fn = paginas.get(self.menu_seleccionado, self._mostrar_pagina_inicio)
-        fn()
+        clave = self.menu_seleccionado
+        if clave in self._VISTA_CLASES:
+            vista = self._obtener_o_crear_vista(clave)
+            vista.pack(fill="both", expand=True)
+            self._vista_activa = vista
+        elif clave == "configuracion":
+            self._mostrar_configuracion()
+        else:
+            self._mostrar_pagina_inicio()
 
     # ══════════════════════════════════════════════════════════════════
     #  CONFIGURACIÓN DE VENTANA
@@ -295,42 +310,91 @@ class DashboardView(ctk.CTkToplevel):
         self.contenedor_pagina.pack(fill="both", expand=True, padx=16, pady=16)
 
     # ══════════════════════════════════════════════════════════════════
-    #  NAVEGACIÓN
+    #  NAVEGACIÓN Y CACHE DE VISTAS
     # ══════════════════════════════════════════════════════════════════
 
     def _seleccionar_menu(self, clave: str):
+        """Navega a un módulo del menú.
+
+        Las vistas cacheables (pacientes, tarjetero, colores, usuarios)
+        se crean una sola vez y se reutilizan con pack/pack_forget.
+        Inicio y Configuración se recrean cada vez (son ligeras o
+        necesitan reflejar estado actual).
+        """
         if clave == self.menu_seleccionado:
             return
         self.menu_seleccionado = clave
         self._actualizar_estilo_menu(clave)
-        self._limpiar_contenido()
+
+        # Ocultar la vista activa actual (sin destruir)
+        self._ocultar_vista_activa()
+
+        # Limpiar contenido no-cacheado (inicio, config, placeholder)
+        self._limpiar_contenido_no_cacheado()
 
         titulos = {
             "inicio": "Inicio", "pacientes": "Gestión de Pacientes",
+            "tarjetero": "Tarjetero de Ingresos",
             "colores": "Referencia de Colores", "usuarios": "Gestión de Usuarios",
             "configuracion": "Configuración",
         }
         self.label_titulo_pagina.configure(text=titulos.get(clave, clave))
 
-        paginas = {
-            "inicio": self._mostrar_pagina_inicio,
-            "pacientes": lambda: self._cargar_modulo_vista(PacientesView),
-            "colores": lambda: self._cargar_modulo_vista(ColoresView),
-            "usuarios": lambda: self._cargar_modulo_vista(UsuariosView),
-            "configuracion": self._mostrar_configuracion,
-        }
-        paginas.get(clave, self._mostrar_pagina_placeholder)()
+        # Mostrar vista cacheable o crear vista temporal
+        if clave in self._VISTA_CLASES:
+            vista = self._obtener_o_crear_vista(clave)
+            vista.pack(fill="both", expand=True)
+            self._vista_activa = vista
+        elif clave == "configuracion":
+            self._mostrar_configuracion()
+        elif clave == "inicio":
+            self._mostrar_pagina_inicio()
+        else:
+            self._mostrar_pagina_placeholder()
 
-    def _cargar_modulo_vista(self, vista_class):
-        """Instancia una vista pasándole el tema y fuentes actuales."""
-        modulo = vista_class(
-            self.contenedor_pagina,
-            tema=self.colores,
-            fuentes=self.fuentes,
-        )
-        modulo.pack(fill="both", expand=True)
+    def _obtener_o_crear_vista(self, clave: str) -> ctk.CTkFrame:
+        """Retorna la vista cacheada o la crea si no existe."""
+        if clave not in self._cache_vistas:
+            clase = self._VISTA_CLASES[clave]
+            self._cache_vistas[clave] = clase(
+                self.contenedor_pagina,
+                tema=self.colores,
+                fuentes=self.fuentes,
+            )
+        return self._cache_vistas[clave]
+
+    def _invalidar_cache(self):
+        """Destruye todas las vistas cacheadas para forzar su recreación.
+
+        Se invoca SOLO al guardar configuración (aplicar_tema).
+        """
+        for vista in self._cache_vistas.values():
+            try:
+                vista.destroy()
+            except Exception:
+                pass
+        self._cache_vistas.clear()
+        self._vista_activa = None
+
+    def _ocultar_vista_activa(self):
+        """Oculta la vista activa actual sin destruirla."""
+        if self._vista_activa is not None:
+            self._vista_activa.pack_forget()
+            self._vista_activa = None
+
+    def _limpiar_contenido_no_cacheado(self):
+        """Destruye solo widgets no-cacheados del contenedor de página.
+
+        Los widgets cacheados se ocultan (pack_forget), no se destruyen.
+        Esto elimina vistas temporales como Inicio, Configuración, Placeholder.
+        """
+        cacheados = set(self._cache_vistas.values())
+        for widget in self.contenedor_pagina.winfo_children():
+            if widget not in cacheados:
+                widget.destroy()
 
     def _mostrar_configuracion(self):
+        """Crea y muestra la vista de configuración (no cacheada)."""
         vista = ConfiguracionView(
             self.contenedor_pagina,
             config=self.config,
@@ -359,8 +423,10 @@ class DashboardView(ctk.CTkToplevel):
                 )
 
     def _limpiar_contenido(self):
+        """Limpia todo el contenido del contenedor (usado por aplicar_tema)."""
         for widget in self.contenedor_pagina.winfo_children():
             widget.destroy()
+        self._vista_activa = None
 
     # ══════════════════════════════════════════════════════════════════
     #  PÁGINA DE INICIO
