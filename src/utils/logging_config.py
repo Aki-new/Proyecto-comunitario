@@ -8,13 +8,14 @@ def inicializar_logs():
     # Remover la configuración por defecto de loguru
     logger.remove()
 
-    # 1. Log en Consola (Bonito y coloreado para desarrollo)
-    logger.add(
-        sys.stderr,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        level="DEBUG",
-        enqueue=True
-    )
+    # 1. Log en Consola (Bonito y coloreado para desarrollo - solo si hay consola disponible)
+    if sys.stderr is not None:
+        logger.add(
+            sys.stderr,
+            format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+            level="DEBUG",
+            enqueue=True
+        )
 
     # Calcular ruta absoluta del archivo de logs basada en la ubicación del archivo
     # Volver 3 niveles arriba: utils -> src -> raíz
