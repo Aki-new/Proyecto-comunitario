@@ -1,7 +1,10 @@
 from pydantic import BaseModel
 from typing import Optional
 
+
 class TarjetaSalida(BaseModel):
+    """Modelo de salida para la vista combinada paciente-tarjeta-color."""
+    id_paciente: int
     cedula: str
     nombre1: str
     nombre2: Optional[str] = None

@@ -1,2 +1,10 @@
 .venv
 .vscode
+.db
+__pycache__/
+logs/
+config.json
+database.db
+dist/
+build/
+main.spec
