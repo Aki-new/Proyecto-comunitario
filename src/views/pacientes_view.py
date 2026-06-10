@@ -660,21 +660,27 @@ class PacientesView(ctk.CTkFrame):
     # ══════════════════════════════════════════════════════════════════
 
     def _buscar_todos(self):
-        """Ejecuta una búsqueda sin filtros (muestra todos los pacientes) y los pagina.
-
-        La consulta a la BD se ejecuta en un hilo secundario para no bloquear la UI.
-        """
+        """Ejecuta una búsqueda sin filtros (muestra todos los pacientes) paginada en BD."""
+        self._modo_busqueda = "todos"
+        limit = getattr(self, 'registros_por_pagina', 50)
+        if not hasattr(self, 'pagina_actual') or self.pagina_actual < 1:
+            self.pagina_actual = 1
+        offset = (self.pagina_actual - 1) * limit
         ejecutar_en_hilo(
             self,
-            tarea=self.controlador_busqueda.obtener_todos,
+            tarea=lambda: self.controlador_busqueda.obtener_todos(limit=limit, offset=offset),
             callback_exito=self._on_datos_cargados,
             callback_error=lambda e: self._mostrar_mensaje(f"Error: {e}", True),
         )
 
-    def _on_datos_cargados(self, registros):
+    def _on_datos_cargados(self, resultado):
         """Callback invocado en el hilo principal con los resultados de búsqueda."""
+        if resultado is None:
+            self._mostrar_mensaje("Error al cargar datos desde la base de datos", True)
+            return
+        registros, total = resultado
         self._todos_los_registros = registros
-        self.pagina_actual = 1
+        self._total_registros_bd = total
         self._actualizar_tabla_paginada()
 
     def _construir_panel_filtros(self):
@@ -854,10 +860,13 @@ class PacientesView(ctk.CTkFrame):
             pass
 
     def _ejecutar_busqueda_avanzada(self):
-        """Recopila filtros activos del panel y ejecuta la búsqueda combinada.
+        """Recopila filtros activos del panel y ejecuta la búsqueda combinada paginada."""
+        self._modo_busqueda = "avanzada"
+        limit = getattr(self, 'registros_por_pagina', 50)
+        if not hasattr(self, 'pagina_actual') or self.pagina_actual < 1:
+            self.pagina_actual = 1
+        offset = (self.pagina_actual - 1) * limit
 
-        La consulta se ejecuta en un hilo secundario para no bloquear la UI.
-        """
         filtros = {}
         
         if self.filtro_activos["cedula"].get() and "cedula" in self.entradas_filtros:
@@ -882,6 +891,7 @@ class PacientesView(ctk.CTkFrame):
                 valores_ingresados = True
 
         if not valores_ingresados:
+            self.pagina_actual = 1
             self._buscar_todos()
             return
 
@@ -889,7 +899,7 @@ class PacientesView(ctk.CTkFrame):
         filtros_copia = dict(filtros)
         ejecutar_en_hilo(
             self,
-            tarea=lambda: self.controlador_busqueda.buscar_multicriterio(filtros_copia),
+            tarea=lambda: self.controlador_busqueda.buscar_multicriterio(filtros_copia, limit=limit, offset=offset),
             callback_exito=self._on_busqueda_avanzada_completada,
             callback_error=lambda e: self._mostrar_mensaje(f"Error al buscar: {e}", True),
         )
@@ -898,18 +908,20 @@ class PacientesView(ctk.CTkFrame):
         """Callback invocado en el hilo principal con los resultados de búsqueda avanzada."""
         exito, datos = resultado
         if exito:
-            self.pagina_actual = 1
-            self._todos_los_registros = datos
+            registros, total = datos
+            self._todos_los_registros = registros
+            self._total_registros_bd = total
             self._actualizar_tabla_paginada()
             self.etiqueta_mensaje.configure(text="")
         else:
             self._mostrar_mensaje(str(datos), True)
 
     def _ejecutar_busqueda_avanzada_debounce(self):
-        """Ejecuta la búsqueda avanzada con un debounce de 300ms."""
-        if self._id_debounce_busqueda:
+        """Ejecuta la búsqueda avanzada con un debounce de 500ms."""
+        if hasattr(self, "_id_debounce_busqueda") and self._id_debounce_busqueda:
             self.after_cancel(self._id_debounce_busqueda)
-        self._id_debounce_busqueda = self.after(300, self._ejecutar_busqueda_avanzada)
+        self.pagina_actual = 1
+        self._id_debounce_busqueda = self.after(500, self._ejecutar_busqueda_avanzada)
 
     def _limpiar_filtros(self):
         """Limpia todos los campos del panel de filtros y los restablece a los valores por defecto."""
@@ -919,48 +931,38 @@ class PacientesView(ctk.CTkFrame):
             else:
                 var.set(False)
         self._actualizar_campos_filtros()
+        self.pagina_actual = 1
         self._buscar_todos()
 
     def _actualizar_tabla_paginada(self):
-        """Calcula el slice de registros correspondiente a la página actual y actualiza la UI de paginación."""
+        """Actualiza la UI con los registros obtenidos en la paginación actual."""
         registros = getattr(self, "_todos_los_registros", [])
-        total_registros = len(registros)
-        limite = self.registros_por_pagina
+        total_registros = getattr(self, "_total_registros_bd", 0)
+        limite = getattr(self, "registros_por_pagina", 50)
         
-        # Calcular total de páginas
         total_paginas = max(1, (total_registros + limite - 1) // limite)
         
-        # Validar página actual
         if self.pagina_actual > total_paginas:
             self.pagina_actual = total_paginas
         if self.pagina_actual < 1:
             self.pagina_actual = 1
             
-        # Calcular límites del slice
-        inicio = (self.pagina_actual - 1) * limite
-        fin = min(inicio + limite, total_registros)
+        self._renderizar_resultados(registros)
         
-        # Renderizar solo los registros de la página activa
-        slice_registros = registros[inicio:fin]
-        self._renderizar_resultados(slice_registros)
-        
-        # Re-configurar etiqueta de conteo para mostrar conteo total
         self.etiqueta_conteo.configure(
             text=f"{total_registros} resultado{'s' if total_registros != 1 else ''}"
         )
         
-        # Actualizar los controles de paginación
         self.label_info_paginacion.configure(
             text=f"Pág. {self.pagina_actual} de {total_paginas} ({total_registros} registros)"
         )
         
-        # Habilitar/deshabilitar botones
-        if self.pagina_actual == 1:
+        if self.pagina_actual <= 1:
             self.btn_pag_anterior.configure(state="disabled", fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT_SEC)
         else:
             self.btn_pag_anterior.configure(state="normal", fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT)
             
-        if self.pagina_actual == total_paginas or total_registros == 0:
+        if self.pagina_actual >= total_paginas or total_registros == 0:
             self.btn_pag_siguiente.configure(state="disabled", fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT_SEC)
         else:
             self.btn_pag_siguiente.configure(state="normal", fg_color=self.COLOR_ENTRY_BG, text_color=self.COLOR_TEXT)
@@ -968,11 +970,17 @@ class PacientesView(ctk.CTkFrame):
     def _pag_anterior(self):
         if self.pagina_actual > 1:
             self.pagina_actual -= 1
-            self._actualizar_tabla_paginada()
+            if getattr(self, "_modo_busqueda", "todos") == "avanzada":
+                self._ejecutar_busqueda_avanzada()
+            else:
+                self._buscar_todos()
             
     def _pag_siguiente(self):
         self.pagina_actual += 1
-        self._actualizar_tabla_paginada()
+        if getattr(self, "_modo_busqueda", "todos") == "avanzada":
+            self._ejecutar_busqueda_avanzada()
+        else:
+            self._buscar_todos()
 
     def _renderizar_resultados(self, registros):
         """Renderiza los resultados de búsqueda como filas en la tabla.

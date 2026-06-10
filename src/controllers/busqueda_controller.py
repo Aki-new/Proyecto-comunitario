@@ -65,11 +65,11 @@ class BusquedaController:
         except Exception as e:
             return False, f"Error al realizar la búsqueda: {str(e)}"
 
-    def obtener_todos(self) -> list[TarjetaSalida]:
-        """Retorna todos los registros de la vista."""
-        return self.busqueda_dao.obtener_todos()
+    def obtener_todos(self, limit: int = None, offset: int = None) -> tuple[list[TarjetaSalida], int]:
+        """Retorna todos los registros de la vista paginados."""
+        return self.busqueda_dao.obtener_todos(limit, offset)
 
-    def buscar_multicriterio(self, filtros: dict) -> tuple[bool, str | list[TarjetaSalida]]:
+    def buscar_multicriterio(self, filtros: dict, limit: int = None, offset: int = None) -> tuple[bool, str | tuple[list[TarjetaSalida], int]]:
         """Busca registros combinando múltiples criterios (AND).
 
         Args:
@@ -79,7 +79,7 @@ class BusquedaController:
             Tupla (éxito, resultados | mensaje_error).
         """
         try:
-            resultados = self.busqueda_dao.buscar_multicriterio(filtros)
+            resultados = self.busqueda_dao.buscar_multicriterio(filtros, limit, offset)
             return True, resultados
         except Exception as e:
             return False, f"Error al realizar la búsqueda multi-criterio: {str(e)}"

@@ -89,5 +89,26 @@ def poblar_sistema_medico():
     conexion.close()
     print(f"¡Éxito absoluto! Sistema poblado en: {datetime.now() - inicio_total}")
 
+def sincronizar_fts():
+    conexion = sqlite3.connect(DB_NAME)
+    cursor = conexion.cursor()
+    print("Sincronizando pacientes existentes hacia FTS5...")
+    # Limpiamos e insertamos todo de nuevo
+    cursor.execute("DELETE FROM pacientes_fts;")
+    cursor.execute("""
+        INSERT INTO pacientes_fts(rowid, id_paciente, nombres, apellidos, cedula)
+        SELECT id, id, nombre1 || ' ' || COALESCE(nombre2, ''), apellido1 || ' ' || COALESCE(apellido2, ''), cedula
+        FROM pacientes;
+    """)
+    conexion.commit()
+    conexion.close()
+    print("¡Sincronización FTS5 completa!")
+
 if __name__ == "__main__":
-    poblar_sistema_medico()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "sync":
+        sincronizar_fts()
+    else:
+        poblar_sistema_medico()
+        # Sincronizamos por si acaso, aunque los triggers deberían hacerlo
+        sincronizar_fts()
