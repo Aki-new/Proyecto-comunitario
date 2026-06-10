@@ -4,6 +4,7 @@
 __pycache__/
 logs/
 config.json
+database.db
 dist/
 build/
 main.spec
