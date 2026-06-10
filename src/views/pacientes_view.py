@@ -1329,11 +1329,11 @@ class PacientesView(ctk.CTkFrame):
         if not apellido1:
             errores.append("• Primer Apellido: campo obligatorio.")
 
-        fecha = self.campo_fecha_nacimiento.obtener_fecha().strip()
+        fecha = self.campo_fecha_nacimiento.obtener_fecha().strip().replace("/", "-")
         if not fecha:
-            errores.append("• Fecha Nac.: campo obligatorio (DD/MM/AAAA).")
+            errores.append("• Fecha Nac.: campo obligatorio (DD-MM-AAAA).")
         elif not self._validar_formato_fecha(fecha):
-            errores.append("• Fecha Nac.: formato invalido. Ejemplo: 21/02/2000.")
+            errores.append("• Fecha Nac.: formato invalido. Ejemplo: 21-02-2000.")
 
         lugar = self.entradas_formulario["lugar_nacimiento"].get().strip()
         if not lugar:
@@ -1363,7 +1363,7 @@ class PacientesView(ctk.CTkFrame):
             "apellido2": (
                 self.entradas_formulario["apellido2"].get().strip() or None
             ),
-            "fecha_nacimiento": fecha.replace("-", "/"),
+            "fecha_nacimiento": fecha,
             "lugar_nacimiento": lugar,
             "estado_vital": (
                 1 if self.selector_estado_vital.get() == "Vivo" else 0

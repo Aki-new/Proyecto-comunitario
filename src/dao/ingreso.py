@@ -9,6 +9,7 @@ maneja historial.
 import sqlite3
 from models.servicio import Ingreso, IngresoCreate, IngresoDetalle
 from models.num_historia_utils import MAPA_COLORES
+from utils.date_utils import formatear_fecha_para_mostrar
 from dao.conexion import ConexionDB
 
 
@@ -219,6 +220,9 @@ class IngresoDAO:
 
     def _fila_a_detalle(self, fila: dict) -> IngresoDetalle:
         """Convierte un dict de fila SQL a IngresoDetalle con hex de color."""
+        if fila.get("fecha_ingreso"):
+            fila["fecha_ingreso"] = formatear_fecha_para_mostrar(fila["fecha_ingreso"])
+
         color_nombre = fila.get("color_nombre", "") or ""
         fila["color_hex"] = _COLOR_NOMBRE_A_HEX.get(color_nombre, "#888888")
         if fila.get("num_historia") is None:

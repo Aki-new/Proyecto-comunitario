@@ -15,6 +15,8 @@ Reglas de negocio:
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
+from utils.date_utils import normalizar_fecha_a_iso
+
 
 class Servicio(BaseModel):
     """Servicio hospitalario con capacidad de camas.
@@ -76,11 +78,17 @@ class IngresoCreate(BaseModel):
     Atributos:
         id_paciente:    ID del paciente a ingresar.
         id_servicio:    ID del servicio donde se ingresa.
-        fecha_ingreso:  Fecha de ingreso en formato DD/MM/AAAA.
+        fecha_ingreso:  Fecha de ingreso en formato DD-MM-AAAA.
     """
     id_paciente: int
     id_servicio: int
     fecha_ingreso: str
+
+    @field_validator("fecha_ingreso")
+    @classmethod
+    def validar_fecha_ingreso(cls, v: str) -> str:
+        """Valida y normaliza la fecha de ingreso a YYYY-MM-DD."""
+        return normalizar_fecha_a_iso(v)
 
 
 class IngresoDetalle(BaseModel):

@@ -15,6 +15,7 @@ Cambios v3:
 import sqlite3
 from models.busqueda import TarjetaSalida
 from dao.conexion import ConexionDB
+from utils.date_utils import formatear_fecha_para_mostrar, normalizar_fecha_para_busqueda, generar_patrones_busqueda_fecha
 
 
 class BusquedaDAO:
@@ -45,7 +46,14 @@ class BusquedaDAO:
         cursor.execute(query, params)
         filas = cursor.fetchall()
         conn.close()
-        return [TarjetaSalida(**dict(fila)) for fila in filas]
+
+        resultados = []
+        for fila in filas:
+            datos = dict(fila)
+            if datos.get("fecha_nacimiento"):
+                datos["fecha_nacimiento"] = formatear_fecha_para_mostrar(datos["fecha_nacimiento"])
+            resultados.append(TarjetaSalida(**datos))
+        return resultados
 
     # ══════════════════════════════════════════════════════════════════
     #  CONSULTAS
@@ -127,11 +135,14 @@ class BusquedaDAO:
 
     def buscar_por_fecha_nacimiento(self, fecha: str) -> list[TarjetaSalida]:
         """Búsqueda por fecha de nacimiento (parcial o exacta)."""
-        return self._ejecutar_consulta(
-            f"SELECT * FROM vista_paciente_tarjeta "
-            f"WHERE fecha_nacimiento LIKE ?{self._ORDEN}",
-            (f"%{fecha}%",),
-        )
+        valores = generar_patrones_busqueda_fecha(fecha)
+        if not valores:
+            return []
+
+        placeholders = " OR ".join(["fecha_nacimiento LIKE ?"] * len(valores))
+        query = f"SELECT * FROM vista_paciente_tarjeta WHERE ({placeholders}){self._ORDEN}"
+        params = tuple(f"%{valor}%" for valor in valores)
+        return self._ejecutar_consulta(query, params)
 
     def buscar_por_lugar_nacimiento(self, lugar: str) -> list[TarjetaSalida]:
         """Búsqueda parcial por lugar de nacimiento (case-insensitive)."""
@@ -202,8 +213,10 @@ class BusquedaDAO:
             elif clave == "fecha_nacimiento":
                 v = str(valor).strip()
                 if v:
-                    condiciones.append("fecha_nacimiento LIKE ?")
-                    parametros.append(f"%{v}%")
+                    valores = generar_patrones_busqueda_fecha(v)
+                    if valores:
+                        condiciones.append("(" + " OR ".join(["fecha_nacimiento LIKE ?"] * len(valores)) + ")")
+                        parametros.extend(f"%{valor_busqueda}%" for valor_busqueda in valores)
 
             elif clave == "fecha_nacimiento_partes":
                 # valor es (dia, mes, anio)

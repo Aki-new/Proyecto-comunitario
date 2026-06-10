@@ -4,14 +4,13 @@ import re
 from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 
+from utils.date_utils import normalizar_fecha_a_iso
+
 
 # ── Patrones de validacion ────────────────────────────────────────
 # Cedula: V-12345678 o E-12345678 (letra + guion + 6-10 digitos)
 # Tambien acepta vacio/S-C para ninos sin cedula
 PATRON_CEDULA = re.compile(r"^[VvEe]-\d{6,10}$")
-
-# Fecha: DD/MM/YYYY o DD-MM-YYYY
-PATRON_FECHA = re.compile(r"^\d{2}[/\-]\d{2}[/\-]\d{4}$")
 
 
 class PacienteBase(BaseModel):
@@ -49,30 +48,9 @@ class PacienteBase(BaseModel):
     @classmethod
     def validar_fecha(cls, v: str) -> str:
         """Valida y normaliza la fecha de nacimiento.
-        Acepta DD/MM/YYYY o DD-MM-YYYY. Normaliza a DD/MM/YYYY.
+        Acepta DD/MM/YYYY, DD-MM-YYYY o YYYY-MM-DD. Normaliza a YYYY-MM-DD.
         """
-        v = v.strip()
-        if not PATRON_FECHA.match(v):
-            raise ValueError(
-                "Formato de fecha invalido. "
-                "Use DD/MM/YYYY o DD-MM-YYYY (ej: 21/02/2026)."
-            )
-
-        # Normalizar separadores a /
-        v = v.replace("-", "/")
-
-        # Validar que la fecha sea logica
-        partes = v.split("/")
-        dia, mes, anio = int(partes[0]), int(partes[1]), int(partes[2])
-
-        if mes < 1 or mes > 12:
-            raise ValueError("Mes invalido (debe ser 01-12).")
-        if dia < 1 or dia > 31:
-            raise ValueError("Dia invalido (debe ser 01-31).")
-        if anio < 1900 or anio > 2100:
-            raise ValueError("Anio invalido (debe ser 1900-2100).")
-
-        return v
+        return normalizar_fecha_a_iso(v)
 
     @field_validator("nombre1", "apellido1")
     @classmethod

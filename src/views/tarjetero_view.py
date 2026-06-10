@@ -21,6 +21,7 @@ Relación con otros módulos:
 import datetime
 import customtkinter as ctk
 from controllers.ingreso_controller import IngresoController
+from utils.date_utils import parse_date
 from views.calendario_widget import CampoFecha
 from utils.hilo_trabajo import ejecutar_en_hilo
 
@@ -747,7 +748,7 @@ class TarjeteroView(ctk.CTkFrame):
 
         campo_fecha = CampoFecha(marco_inferior, tema=self._tema_dict, fuente_tamano=self._fuentes_dict)
         campo_fecha.grid(row=1, column=1, padx=4, pady=(0, 10), sticky="w")
-        hoy = datetime.datetime.now().strftime("%d/%m/%Y")
+        hoy = datetime.datetime.now().strftime("%d-%m-%Y")
         campo_fecha.establecer_fecha(hoy)
 
         # Botón de ingreso prominente
@@ -1193,14 +1194,14 @@ class TarjeteroView(ctk.CTkFrame):
         """Calcula los días transcurridos desde la fecha de ingreso.
 
         Args:
-            fecha_str: Fecha en formato DD/MM/AAAA.
+            fecha_str: Fecha en formato DD-MM-AAAA, DD/MM/AAAA o YYYY-MM-DD.
 
         Returns:
             Número de días desde el ingreso.
         """
         try:
-            fecha = datetime.datetime.strptime(fecha_str, "%d/%m/%Y")
-            delta = datetime.datetime.now() - fecha
+            fecha = parse_date(fecha_str)
+            delta = datetime.datetime.now().date() - fecha
             return max(0, delta.days)
         except (ValueError, TypeError):
             return 0

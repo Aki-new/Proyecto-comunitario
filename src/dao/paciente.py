@@ -1,6 +1,7 @@
 import sqlite3
 from models.paciente import PacienteCreate, Paciente
 from dao.conexion import ConexionDB
+from utils.date_utils import formatear_fecha_para_mostrar
 
 
 class PacienteDAO:
@@ -49,6 +50,8 @@ class PacienteDAO:
         d = dict(fila)
         if d.get("cedula") is None:
             d["cedula"] = "S/C"
+        if d.get("fecha_nacimiento"):
+            d["fecha_nacimiento"] = formatear_fecha_para_mostrar(d["fecha_nacimiento"])
         return Paciente(**d)
 
     def obtener_por_id(self, id_paciente: int) -> Paciente | None:

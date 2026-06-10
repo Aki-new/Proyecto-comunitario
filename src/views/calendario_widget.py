@@ -368,7 +368,7 @@ class CalendarioPopup(ctk.CTkToplevel):
         fecha : datetime.date
             La fecha seleccionada por el usuario.
         """
-        fecha_formateada = fecha.strftime("%d/%m/%Y")
+        fecha_formateada = fecha.strftime("%d-%m-%Y")
         self._callback(fecha_formateada)
         self.grab_release()
         self.destroy()
@@ -458,7 +458,7 @@ class CampoFecha(ctk.CTkFrame):
     """Widget compuesto: campo de texto para fecha + boton de calendario.
 
     Combina un ``CTkEntry`` donde el usuario puede escribir manualmente
-    una fecha en formato ``DD/MM/AAAA`` y un boton con icono de calendario
+    una fecha en formato ``DD-MM-AAAA`` y un boton con icono de calendario
     (📅) que despliega un ``CalendarioPopup`` para seleccion visual.
 
     Parametros
@@ -502,7 +502,7 @@ class CampoFecha(ctk.CTkFrame):
         # Campo de texto para la fecha
         self.entrada_fecha = ctk.CTkEntry(
             self,
-            placeholder_text="DD/MM/AAAA",
+            placeholder_text="DD-MM-AAAA",
             font=ctk.CTkFont(family="Segoe UI", size=self._fuentes["base"]),
             fg_color=self._colores["entrada_fondo"],
             border_color=self._colores["entrada_borde"],
@@ -598,10 +598,11 @@ class CampoFecha(ctk.CTkFrame):
         Parametros
         ----------
         fecha : str
-            La fecha a establecer, preferiblemente en formato ``DD/MM/AAAA``.
+            La fecha a establecer, preferiblemente en formato ``DD-MM-AAAA``.
         """
         self.entrada_fecha.delete(0, "end")
-        self.entrada_fecha.insert(0, fecha)
+        if fecha is not None:
+            self.entrada_fecha.insert(0, str(fecha).replace("/", "-"))
 
     def limpiar(self):
         """Limpia el contenido del campo de fecha, dejandolo vacio."""
