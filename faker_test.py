@@ -25,8 +25,8 @@ def poblar_sistema_medico():
     ultimo_id = cursor.fetchone()[0]
     id_actual = (ultimo_id if ultimo_id is not None else 0) + 1
     
-    total_registros = 1000000
-    tamano_lote = 25000 # Reducimos un poco el lote porque insertaremos en dos tablas a la vez
+    total_registros = 2000
+    tamano_lote = 100 # Reducimos un poco el lote porque insertaremos en dos tablas a la vez
     
     print(f"Iniciando inyección de {total_registros} pacientes con sus respectivas tarjetas...")
     inicio_total = datetime.now()
